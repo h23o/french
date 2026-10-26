@@ -1,6 +1,7 @@
 import asyncio
 import pathlib
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -12,7 +13,9 @@ import schemas
 from app.services import tts_cache
 from app.services.enrichment import apply_word_info, enrich_missing_cards
 from app.services.external_api import ExternalAPIError, fetch_word_info, lookup_word
-from app.services.text_processor import process_text
+from app.services.library import summarize
+from app.services.text_processor import CardIndex, process_text
+from app.services.word_bank import bank_phrases, bank_words
 from database import Base, add_missing_columns, engine, get_db, utcnow
 from srs import calculate_sm2
 
@@ -45,6 +48,11 @@ def review_page():
 @app.get("/my-cards", include_in_schema=False)
 def cards_page():
     return FileResponse(STATIC_DIR / "cards.html")
+
+
+@app.get("/library", include_in_schema=False)
+def library_page():
+    return FileResponse(STATIC_DIR / "library.html")
 
 
 @app.post("/cards/", response_model=schemas.CardResponse, status_code=201)
@@ -118,6 +126,68 @@ def review_card(card_id: int, review: schemas.CardReview, db: Session = Depends(
     db.commit()
     db.refresh(card)
     return card
+
+
+@app.get("/texts/", response_model=list[schemas.TextSummary])
+def list_texts(db: Session = Depends(get_db)):
+    index = CardIndex(db)
+    texts = db.scalars(select(models.SavedText).order_by(models.SavedText.updated_at.desc())).all()
+    return [summarize(db, text, index) for text in texts]
+
+
+@app.post("/texts/", response_model=schemas.TextResponse, status_code=201)
+def create_text(text: schemas.TextCreate, db: Session = Depends(get_db)):
+    db_text = models.SavedText(**text.model_dump())
+    db.add(db_text)
+    db.commit()
+    db.refresh(db_text)
+    return db_text
+
+
+@app.get("/texts/{text_id}", response_model=schemas.TextResponse)
+def get_text(text_id: int, db: Session = Depends(get_db)):
+    text = db.get(models.SavedText, text_id)
+    if text is None:
+        raise HTTPException(status_code=404, detail="Text not found")
+    return text
+
+
+@app.patch("/texts/{text_id}", response_model=schemas.TextResponse)
+def update_text(text_id: int, changes: schemas.TextUpdate, db: Session = Depends(get_db)):
+    text = db.get(models.SavedText, text_id)
+    if text is None:
+        raise HTTPException(status_code=404, detail="Text not found")
+    for field, value in changes.model_dump(exclude_unset=True).items():
+        setattr(text, field, value)
+    db.commit()
+    db.refresh(text)
+    return text
+
+
+@app.delete("/texts/{text_id}", status_code=204)
+def delete_text(text_id: int, db: Session = Depends(get_db)):
+    text = db.get(models.SavedText, text_id)
+    if text is None:
+        raise HTTPException(status_code=404, detail="Text not found")
+    db.delete(text)
+    db.commit()
+
+
+@app.get("/api/bank/words", response_model=schemas.BankWordsResponse)
+def get_bank_words(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    q: str = "",
+    pos: Literal["noun", "verb", "adjective", "adverb", "other"] | None = None,
+    hide_known: bool = False,
+    db: Session = Depends(get_db),
+):
+    return bank_words(db, offset=offset, limit=limit, q=q, pos=pos, hide_known=hide_known)
+
+
+@app.get("/api/bank/phrases", response_model=list[schemas.PhraseCategory])
+def get_bank_phrases(db: Session = Depends(get_db)):
+    return bank_phrases(db)
 
 
 @app.post("/api/process-text", response_model=list[schemas.TokenResponse])

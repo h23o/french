@@ -105,6 +105,11 @@
     cursor: pointer;
   }
   .btn:disabled { opacity: .6; cursor: progress; }
+  .btn.secondary { background: var(--hover); color: var(--text); }
+  .btn.secondary:disabled { cursor: default; }
+  .text-title { margin: 0 0 10px; font: 600 1.05rem Georgia, serif; }
+  .text-title a { color: var(--accent); font: 600 .8125rem system-ui, sans-serif; margin-left: 8px; text-decoration: none; }
+  .text-title a:hover { text-decoration: underline; }
   .hint { color: var(--muted); font-size: .875rem; }
   .error { color: var(--danger); }
 
@@ -326,6 +331,7 @@
     <header class="top">
       <h1>French Reader</h1>
       <nav class="nav">
+        <a class="review-link" href="/library">Library</a>
         <a class="review-link" href="/my-cards">My cards</a>
         <a id="review-link" class="review-link" href="/review">Review</a>
       </nav>
@@ -333,9 +339,12 @@
     <p class="subtitle">Paste French text, then tap any word to look it up or save it.</p>
 
     <form id="reader-form" class="card">
+      <p id="text-title" class="text-title" hidden></p>
       <textarea id="text" placeholder="Collez votre texte ici…" aria-label="French text" spellcheck="false"></textarea>
       <div class="row">
         <button id="submit" class="btn" type="submit">Read text</button>
+        <button id="save-text" class="btn secondary" type="button" hidden>Save to library</button>
+        <button id="update-text" class="btn secondary" type="button" hidden>Update saved text</button>
         <span id="status" class="hint">Ctrl+Enter to submit</span>
       </div>
     </form>
@@ -472,6 +481,73 @@ $("#reader-form").addEventListener("submit", async (e) => {
     btn.disabled = false;
   }
 });
+
+// ---- Text library ----
+// `saved` is the library text currently in the box (if any), so edits can update it
+// or be saved as a new text instead of silently overwriting it.
+
+let saved = null; // {id, title, body}
+
+function updateLibraryButtons() {
+  const body = textInput.value.trim();
+  if (saved && !body) {
+    saved = null; // box cleared: no longer editing the saved text
+    history.replaceState(null, "", "/");
+  }
+  const saveBtn = $("#save-text");
+  const updateBtn = $("#update-text");
+  const unchanged = saved && body === saved.body;
+  saveBtn.hidden = !body;
+  saveBtn.disabled = !!unchanged;
+  saveBtn.textContent = unchanged ? "In library ✓" : saved ? "Save as new" : "Save to library";
+  updateBtn.hidden = !saved || unchanged;
+
+  const title = $("#text-title");
+  title.hidden = !saved;
+  if (saved) title.replaceChildren(saved.title, el("a", { href: "/library", textContent: "Library →" }));
+}
+textInput.addEventListener("input", updateLibraryButtons);
+
+function defaultTitle(body) {
+  const first = body.split("\n").find((line) => line.trim()).trim();
+  return first.length > 60 ? `${first.slice(0, 60).replace(/\s+\S*$/, "")}…` : first;
+}
+
+async function saveToLibrary(update) {
+  const body = textInput.value.trim();
+  const status = $("#status");
+  try {
+    saved = update
+      ? await api(`/texts/${saved.id}`, { method: "PATCH", body: JSON.stringify({ body }) })
+      : await api("/texts/", { method: "POST", body: JSON.stringify({ title: defaultTitle(body), body }) });
+    history.replaceState(null, "", `/?text=${saved.id}`);
+    status.className = "hint";
+    status.textContent = update ? "Updated." : "Saved — rename it in the Library.";
+  } catch (err) {
+    status.className = "error";
+    status.textContent = `Couldn't save: ${err.message}`;
+  }
+  updateLibraryButtons();
+}
+$("#save-text").addEventListener("click", () => saveToLibrary(false));
+$("#update-text").addEventListener("click", () => saveToLibrary(true));
+
+async function openSavedText(id) {
+  const status = $("#status");
+  try {
+    saved = await api(`/texts/${encodeURIComponent(id)}`);
+  } catch (err) {
+    status.className = "error";
+    status.textContent = err.status === 404 ? "That text is no longer in your library." : `Couldn't open text: ${err.message}`;
+    return;
+  }
+  textInput.value = saved.body;
+  updateLibraryButtons();
+  await loadTokens(saved.body);
+}
+
+const textParam = new URLSearchParams(location.search).get("text");
+if (textParam) openSavedText(textParam);
 
 textInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("#reader-form").requestSubmit();

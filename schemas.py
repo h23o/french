@@ -1,12 +1,15 @@
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import quote
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field, field_validator
 
 # Noun gender: masculine, feminine, or either ("un/une élève").
 Gender = Literal["m", "f", "mf"]
 INDEFINITE_ARTICLES = {"m": "un", "f": "une"}
+
+# SQLite returns naive datetimes; they are stored as UTC, so say so in the JSON ("...Z").
+UTCDateTime = Annotated[datetime, AfterValidator(lambda v: v.replace(tzinfo=timezone.utc) if v.tzinfo is None else v)]
 
 
 class CardCreate(BaseModel):
@@ -53,14 +56,8 @@ class CardResponse(BaseModel):
     repetitions: int
     interval: int
     easiness: float
-    next_review: datetime
-    created_at: datetime
-
-    @field_validator("next_review", "created_at")
-    @classmethod
-    def mark_utc(cls, value: datetime) -> datetime:
-        # SQLite returns naive datetimes; they are stored as UTC, so say so in the JSON ("...Z").
-        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    next_review: UTCDateTime
+    created_at: UTCDateTime
 
     @computed_field
     @property
@@ -120,3 +117,88 @@ class LookupResponse(BaseModel):
     base_forms: list[BaseForm]  # what this word is an inflection of, e.g. suis -> être
     meanings: list[Meaning]
     examples: list[ExampleSentence]
+
+
+# ---- Text library ----
+
+
+class TextCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1)
+
+
+class TextUpdate(BaseModel):
+    """Partial update: omitted fields are left unchanged."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    body: str | None = Field(default=None, min_length=1)
+
+    @field_validator("title", "body")
+    @classmethod
+    def not_null(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError("cannot be null")
+        return value
+
+
+class TextResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    body: str
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
+
+
+class TextSummary(BaseModel):
+    id: int
+    title: str
+    preview: str  # opening of the text
+    word_count: int
+    known_pct: int  # share of running words covered by your cards (words, forms or phrases)
+    new_words: int  # distinct words not yet in your cards
+    updated_at: UTCDateTime
+
+
+# ---- Word bank ----
+
+
+class CardStatus(BaseModel):
+    in_database: bool
+    card_id: int | None
+    card_word: str | None
+    is_due: bool
+
+
+class BankWord(CardStatus):
+    rank: int  # 1 = most frequent
+    word: str
+    pos: list[str]  # parts of speech, most common use first
+    gender: Gender | None
+    per_million: float
+
+
+class Coverage(BaseModel):
+    top: int  # the N most frequent words…
+    known: int  # …of which this many are in your cards
+
+
+class BankWordsResponse(BaseModel):
+    total: int  # matching the filters
+    items: list[BankWord]
+    coverage: list[Coverage]
+
+
+class BankPhrase(CardStatus):
+    text: str
+    translation: str
+
+
+class PhraseCategory(BaseModel):
+    category: str
+    phrases: list[BankPhrase]

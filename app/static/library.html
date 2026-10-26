@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library</title>
+<style>
+  :root {
+    --bg: #f6f6f3;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6a6a70;
+    --border: #dcdcd6;
+    --hover: #ecece6;
+    --accent: #2457d6;
+    --accent-text: #ffffff;
+    --danger: #b42318;
+    --danger-text: #ffffff;
+    --known-bg: #d4eaff;
+    --known-text: #0b3a66;
+    --due-bg: #ffd49e;
+    --due-text: #5e2f00;
+    --meter: #3f8f5a;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416;
+      --surface: #1e1e21;
+      --text: #ececef;
+      --muted: #a2a2aa;
+      --border: #35353b;
+      --hover: #2a2a2f;
+      --accent: #7ea4ff;
+      --accent-text: #0d1a33;
+      --danger: #ff8a80;
+      --danger-text: #2b0805;
+      --known-bg: #18395a;
+      --known-text: #d3e8ff;
+      --due-bg: #5a3311;
+      --due-text: #ffdcb3;
+      --meter: #5cb87a;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
+
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .top .back { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .top .back:hover { text-decoration: underline; }
+  h1 { font-size: 1.25rem; margin: 0; }
+  .pill {
+    font-weight: 600;
+    font-size: .9375rem;
+    text-decoration: none;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .pill:hover { border-color: var(--accent); }
+  .pill.has-due { background: var(--due-bg); border-color: var(--due-bg); color: var(--due-text); }
+
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .tabs button {
+    flex: 1 1 auto;
+    font: inherit;
+    font-weight: 600;
+    padding: 10px 8px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+
+  input, textarea, select {
+    font: inherit;
+    font-size: 16px; /* avoids iOS zoom on focus */
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .btn {
+    font: inherit;
+    font-size: .875rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .btn.confirm { background: var(--danger); border-color: var(--danger); color: var(--danger-text); }
+  .btn:disabled { opacity: .6; cursor: progress; }
+  .btn:focus-visible, .tabs button:focus-visible, .audio-btn:focus-visible, .segmented button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .badge { font-size: .75rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  .badge.known { background: var(--known-bg); color: var(--known-text); }
+  .badge.due { background: var(--due-bg); color: var(--due-text); }
+  .hint { color: var(--muted); font-size: .875rem; margin: 0; }
+  .error { color: var(--danger); font-size: .875rem; margin: 0; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 16px; background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; }
+  .empty a { color: var(--accent); }
+  .article { color: var(--muted); font-weight: 400; }
+
+  .audio-btn {
+    width: 30px; height: 30px;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .audio-btn:hover, .audio-btn.playing { border-color: var(--accent); color: var(--accent); }
+  .audio-btn svg { width: 15px; height: 15px; }
+
+  /* ---- Texts ---- */
+  .tab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .text-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: grid; gap: 8px; }
+  .text-title { font: 600 1.15rem/1.3 Georgia, serif; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+  .text-title:hover { color: var(--accent); }
+  .preview { color: var(--muted); font: .95rem/1.5 Georgia, serif; margin: 0; overflow-wrap: anywhere; }
+  .meter { display: flex; align-items: center; gap: 10px; font-size: .8125rem; color: var(--muted); }
+  .meter-bar { flex: 1; max-width: 220px; height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+  .meter-bar > div { height: 100%; background: var(--meter); }
+  .text-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rename { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rename input { flex: 1; min-width: 180px; }
+
+  /* ---- Words ---- */
+  .coverage { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 16px; }
+  .band { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; min-width: 0; }
+  .band-label { font-size: .6875rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .band-count { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .coverage-note { margin: -8px 0 16px; }
+  .controls { display: grid; gap: 10px; margin-bottom: 12px; }
+  .controls-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .segmented { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .segmented button { font: inherit; font-size: .8125rem; border: 0; padding: 6px 11px; background: none; color: var(--muted); cursor: pointer; }
+  .segmented button + button { border-left: 1px solid var(--border); }
+  .segmented button[aria-pressed="true"] { background: var(--hover); color: var(--text); font-weight: 600; }
+  .check { display: inline-flex; align-items: center; gap: 6px; font-size: .875rem; color: var(--muted); cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+
+  .rows { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; }
+  .row + .row { border-top: 1px solid var(--border); }
+  .rank { width: 3.2em; flex: none; color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; }
+  .row-main { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; }
+  .row-word { font: 600 1.1rem Georgia, serif; overflow-wrap: anywhere; }
+  .row-sub { color: var(--muted); font-size: .8125rem; }
+  .row-side { display: flex; align-items: center; gap: 8px; flex: none; }
+  .add-form { flex-basis: 100%; display: grid; gap: 8px; padding: 10px 0 4px calc(3.2em + 12px); }
+  .add-form label { display: grid; gap: 4px; font-size: .8125rem; font-weight: 600; color: var(--muted); }
+  .add-form input, .add-form textarea, .add-form select { width: 100%; font-weight: 400; }
+  .add-form textarea { min-height: 56px; resize: vertical; }
+  .add-form .buttons { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .meanings { margin: 0; font-size: .875rem; }
+  .meanings b { color: var(--muted); font-weight: 600; }
+  .more { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+  .credits { font-size: .75rem; color: var(--muted); margin-top: 16px; }
+  .credits a { color: inherit; }
+
+  /* ---- Phrases ---- */
+  .category { margin-bottom: 20px; }
+  .category h2 { font-size: 1rem; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .category h2 span { font-size: .8125rem; font-weight: 400; color: var(--muted); }
+  .phrase-fr { font: 600 1.05rem Georgia, serif; }
+
+  @media (max-width: 520px) {
+    .rank { width: 2.6em; }
+    .add-form { padding-left: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <a class="back" href="/">← Reader</a>
+    <h1>Library</h1>
+    <a id="review-link" class="pill" href="/review">Review</a>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="texts" aria-selected="true">My texts</button>
+    <button type="button" role="tab" data-tab="words" aria-selected="false">Common words</button>
+    <button type="button" role="tab" data-tab="phrases" aria-selected="false">Phrases</button>
+  </nav>
+
+  <section id="tab-texts" role="tabpanel">
+    <div class="tab-head">
+      <p class="hint">Texts you've saved from the reader, with how much of each you already know.</p>
+      <a class="btn primary" href="/">New text</a>
+    </div>
+    <p id="texts-status" class="error" hidden></p>
+    <ul id="texts" class="list"></ul>
+    <div id="texts-empty" class="empty" hidden>No saved texts yet. Paste one into the <a href="/">reader</a> and press <b>Save to library</b>.</div>
+  </section>
+
+  <section id="tab-words" role="tabpanel" hidden>
+    <div id="coverage" class="coverage" aria-label="How many of the most common words you know"></div>
+    <p class="hint coverage-note">How many of the most common words are in your cards.</p>
+    <div class="controls">
+      <input id="word-search" type="search" placeholder="Search the 5,000 most common words…" aria-label="Search words" autocomplete="off">
+      <div class="controls-row">
+        <div class="segmented" role="group" aria-label="Part of speech">
+          <button type="button" data-pos="" aria-pressed="true">All</button>
+          <button type="button" data-pos="noun" aria-pressed="false">Nouns</button>
+          <button type="button" data-pos="verb" aria-pressed="false">Verbs</button>
+          <button type="button" data-pos="adjective" aria-pressed="false" title="Adjectives">Adj.</button>
+          <button type="button" data-pos="adverb" aria-pressed="false" title="Adverbs">Adv.</button>
+          <button type="button" data-pos="other" aria-pressed="false">Other</button>
+        </div>
+        <label class="check"><input id="hide-known" type="checkbox"> Hide words I have</label>
+      </div>
+    </div>
+    <p id="words-status" class="error" hidden></p>
+    <ul id="words" class="rows"></ul>
+    <div class="more">
+      <span id="words-count" class="hint"></span>
+      <button id="words-more" class="btn" type="button" hidden>Show more</button>
+    </div>
+    <p class="credits">Ranked by frequency in French films and books: <a href="http://www.lexique.org" target="_blank" rel="noopener">Lexique 3.83</a> (CC BY-SA 4.0). Definitions: Wiktionary; examples: Tatoeba.</p>
+  </section>
+
+  <section id="tab-phrases" role="tabpanel" hidden>
+    <p class="hint" style="margin-bottom: 16px">Everyday phrases with translations — add any of them to your cards in one tap.</p>
+    <p id="phrases-status" class="error" hidden></p>
+    <div id="phrases"></div>
+  </section>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const player = new Audio();
+const ARTICLES = { m: "un", f: "une", mf: "un/une" };
+const SPEAKER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+async function api(path, options = {}) {
+  const resp = await fetch(path, {
+    ...options,
+    headers: options.body ? { "Content-Type": "application/json" } : undefined,
+  });
+  const body = resp.status === 204 ? null : await resp.json().catch(() => null);
+  if (!resp.ok) {
+    const detail = typeof body?.detail === "string" ? body.detail : `Request failed (${resp.status})`;
+    throw Object.assign(new Error(detail), { status: resp.status });
+  }
+  return body;
+}
+
+function showError(id, message) {
+  const node = $(id);
+  node.textContent = message;
+  node.hidden = !message;
+}
+
+function statusBadge(item) {
+  if (!item.in_database) return null;
+  return el("span", { className: `badge ${item.is_due ? "due" : "known"}`, textContent: item.is_due ? "Due" : "In cards" });
+}
+
+function audioButton(spoken) {
+  const btn = el("button", { type: "button", className: "audio-btn", title: "Play" });
+  btn.innerHTML = SPEAKER_ICON;
+  btn.setAttribute("aria-label", `Play ${spoken}`);
+  btn.addEventListener("click", () => {
+    player.pause();
+    document.querySelectorAll(".audio-btn.playing").forEach((b) => b.classList.remove("playing"));
+    player.src = `/api/tts/fr?text=${encodeURIComponent(spoken)}`;
+    btn.classList.add("playing");
+    const done = () => btn.classList.remove("playing");
+    player.onended = player.onerror = player.onpause = done;
+    player.play().catch(done);
+  });
+  return btn;
+}
+
+async function refreshDueCount() {
+  const link = $("#review-link");
+  try {
+    const due = (await api("/cards/due")).length;
+    link.textContent = due ? `Review · ${due} due` : "Review";
+    link.classList.toggle("has-due", due > 0);
+  } catch {
+    link.textContent = "Review";
+  }
+}
+
+// ---- Tabs (#texts / #words / #phrases) ----
+
+const loaded = {};
+function showTab(name) {
+  if (!["texts", "words", "phrases"].includes(name)) name = "texts";
+  document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
+  for (const tab of ["texts", "words", "phrases"]) $(`#tab-${tab}`).hidden = tab !== name;
+  if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
+  if (!loaded[name]) {
+    loaded[name] = true;
+    ({ texts: loadTexts, words: () => loadWords(true), phrases: loadPhrases })[name]();
+  }
+}
+document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+
+// ---- My texts ----
+
+async function loadTexts() {
+  let texts;
+  try {
+    texts = await api("/texts/");
+  } catch (err) {
+    showError("#texts-status", `Couldn't load texts: ${err.message}`);
+    return;
+  }
+  $("#texts").replaceChildren(...texts.map(textItem));
+  $("#texts-empty").hidden = texts.length > 0;
+}
+
+function textItem(t) {
+  const li = el("li", { className: "text-item" });
+  const title = el("a", { className: "text-title", href: `/?text=${t.id}`, textContent: t.title });
+  const meter = el("div", { className: "meter" },
+    el("div", { className: "meter-bar", title: `${t.known_pct}% of the words are in your cards` }, el("div", { style: `width: ${t.known_pct}%` })),
+    `${t.known_pct}% known · ${t.word_count} words · ${t.new_words} new`,
+  );
+  const rename = el("button", { type: "button", className: "btn", textContent: "Rename" });
+  const del = el("button", { type: "button", className: "btn", textContent: "Delete" });
+  const actions = el("div", { className: "text-actions" }, el("a", { className: "btn primary", href: `/?text=${t.id}`, textContent: "Read" }), rename, del);
+  li.append(title, el("p", { className: "preview", lang: "fr", textContent: t.preview }), meter, actions);
+
+  rename.addEventListener("click", () => {
+    const input = el("input", { value: t.title, required: true, maxLength: 200, ariaLabel: "Title" });
+    const form = el("form", { className: "rename" }, input,
+      el("button", { type: "submit", className: "btn primary", textContent: "Save" }),
+      el("button", { type: "button", className: "btn", textContent: "Cancel", onclick: () => form.replaceWith(title) }),
+    );
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const updated = await api(`/texts/${t.id}`, { method: "PATCH", body: JSON.stringify({ title: input.value }) });
+        t.title = title.textContent = updated.title;
+        form.replaceWith(title);
+      } catch (err) {
+        showError("#texts-status", `Couldn't rename: ${err.message}`);
+      }
+    });
+    title.replaceWith(form);
+    input.focus();
+    input.select();
+  });
+
+  del.addEventListener("click", async () => {
+    // First click arms the button; a second click within 3s deletes.
+    if (!del.classList.contains("confirm")) {
+      del.classList.add("confirm");
+      del.textContent = "Confirm";
+      setTimeout(() => {
+        del.classList.remove("confirm");
+        del.textContent = "Delete";
+      }, 3000);
+      return;
+    }
+    del.disabled = true;
+    try {
+      await api(`/texts/${t.id}`, { method: "DELETE" });
+    } catch (err) {
+      if (err.status !== 404) {
+        showError("#texts-status", `Couldn't delete: ${err.message}`);
+        del.disabled = false;
+        return;
+      }
+    }
+    li.remove();
+    $("#texts-empty").hidden = $("#texts").children.length > 0;
+  });
+  return li;
+}
+
+// ---- Common words ----
+
+const PAGE = 100;
+const compact = new Intl.NumberFormat("en", { notation: "compact" }); // 1000 -> "1K", fits narrow screens
+const words = { offset: 0, pos: "", request: 0 };
+
+async function loadWords(reset) {
+  const request = ++words.request; // ignore responses to superseded searches
+  if (reset) words.offset = 0;
+  const params = new URLSearchParams({ offset: words.offset, limit: PAGE, q: $("#word-search").value.trim(), hide_known: $("#hide-known").checked });
+  if (words.pos) params.set("pos", words.pos);
+  $("#words-more").disabled = true;
+  let result;
+  try {
+    result = await api(`/api/bank/words?${params}`);
+  } catch (err) {
+    showError("#words-status", `Couldn't load words: ${err.message}`);
+    return;
+  } finally {
+    $("#words-more").disabled = false;
+  }
+  if (request !== words.request) return;
+  showError("#words-status", "");
+  renderCoverage(result.coverage);
+  const rows = result.items.map(wordRow);
+  if (reset) $("#words").replaceChildren(...rows);
+  else $("#words").append(...rows);
+  words.offset += result.items.length;
+  $("#words-more").hidden = words.offset >= result.total;
+  $("#words-count").textContent = result.total
+    ? `Showing ${words.offset.toLocaleString()} of ${result.total.toLocaleString()}`
+    : "No words match.";
+}
+
+function renderCoverage(coverage) {
+  $("#coverage").replaceChildren(...coverage.map(({ top, known }) =>
+    el("div", { className: "band" },
+      el("span", { className: "band-label", textContent: `Top ${compact.format(top)}` }),
+      el("span", { className: "band-count", title: `${known} of the ${top} most common words`, textContent: known.toLocaleString() }),
+      el("div", { className: "meter-bar" }, el("div", { style: `width: ${(100 * known) / top}%` })),
+    )));
+}
+
+async function refreshCoverage() {
+  try {
+    renderCoverage((await api("/api/bank/words?limit=1")).coverage);
+  } catch {
+    /* keep the old numbers */
+  }
+}
+
+function spokenForm(word, gender) {
+  const article = ARTICLES[gender];
+  return article && gender !== "mf" ? `${article} ${word}` : word;
+}
+
+function wordRow(item) {
+  const li = el("li", { className: "row" });
+  const article = ARTICLES[item.gender];
+  const side = el("div", { className: "row-side" });
+  const fill = () => {
+    const badge = statusBadge(item);
+    const add = el("button", { type: "button", className: "btn", textContent: "+ Add" });
+    add.addEventListener("click", () => openAddForm(item, li, fill));
+    side.replaceChildren(badge ?? add, audioButton(spokenForm(item.word, item.gender)));
+  };
+  fill();
+  li.append(
+    el("span", { className: "rank", textContent: `#${item.rank}` }),
+    el("div", { className: "row-main" },
+      el("span", { className: "row-word", lang: "fr" }, ...(article ? [el("span", { className: "article", textContent: `${article} ` })] : []), item.word),
+      el("span", { className: "row-sub", textContent: item.pos.join(" · ") }),
+    ),
+    side,
+  );
+  return li;
+}
+
+async function openAddForm(item, li, onSaved) {
+  if (li.querySelector(".add-form")) return;
+  const form = el("form", { className: "add-form" }, el("p", { className: "hint", textContent: "Looking up…" }));
+  li.append(form);
+
+  let result = null;
+  let lookupError = null;
+  try {
+    result = await api(`/api/lookup/${encodeURIComponent(item.word)}`);
+  } catch (err) {
+    if (err.status !== 404) lookupError = err;
+  }
+
+  const translation = el("input", { required: true, autocomplete: "off", value: result?.definition ?? "" });
+  const gender = el("select", {},
+    el("option", { value: "", textContent: "— (not a noun)" }),
+    el("option", { value: "m", textContent: "masculine · un" }),
+    el("option", { value: "f", textContent: "feminine · une" }),
+    el("option", { value: "mf", textContent: "either · un/une" }),
+  );
+  gender.value = item.gender ?? result?.gender ?? "";
+  const firstExample = result?.examples?.[0];
+  const example = el("textarea", { lang: "fr", value: firstExample?.french ?? "", placeholder: "Optional" });
+  const save = el("button", { type: "submit", className: "btn primary", textContent: "Save to cards" });
+  const cancel = el("button", { type: "button", className: "btn", textContent: "Cancel", onclick: () => form.remove() });
+  const error = el("p", { className: "error", hidden: true });
+
+  const meanings = (result?.meanings ?? []).slice(0, 3).map((m) =>
+    el("p", { className: "meanings" }, el("b", { textContent: `${m.part_of_speech}: ` }), m.definitions.slice(0, 3).join("; ")));
+  const notes = lookupError
+    ? [el("p", { className: "error", textContent: `Couldn't reach the dictionary (${lookupError.message}). You can still add your own translation.` })]
+    : !result
+      ? [el("p", { className: "hint", textContent: "No dictionary entry — add your own translation." })]
+      : meanings;
+
+  form.replaceChildren(
+    ...notes,
+    el("label", {}, "Translation", translation),
+    el("label", {}, "Gender", gender),
+    el("label", {}, firstExample ? `Example — ${firstExample.english}` : "Example sentence", example),
+    el("div", { className: "buttons" }, save, cancel, error),
+  );
+  translation.focus();
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    save.disabled = true;
+    error.hidden = true;
+    try {
+      await api("/cards/", {
+        method: "POST",
+        body: JSON.stringify({
+          word: item.word,
+          translation: translation.value.trim(),
+          gender: gender.value || null,
+          example_sentence: example.value.trim() || null,
+        }),
+      });
+      Object.assign(item, { in_database: true, is_due: true }); // new cards are due immediately
+      form.remove();
+      onSaved();
+      refreshCoverage();
+      refreshDueCount();
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+      save.disabled = false;
+    }
+  });
+}
+
+let searchTimer;
+$("#word-search").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => loadWords(true), 250);
+});
+$("#hide-known").addEventListener("change", () => loadWords(true));
+$("#words-more").addEventListener("click", () => loadWords(false));
+document.querySelectorAll("[data-pos]").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    words.pos = btn.dataset.pos;
+    document.querySelectorAll("[data-pos]").forEach((b) => b.setAttribute("aria-pressed", b === btn));
+    loadWords(true);
+  }),
+);
+
+// ---- Phrases ----
+
+async function loadPhrases() {
+  let groups;
+  try {
+    groups = await api("/api/bank/phrases");
+  } catch (err) {
+    showError("#phrases-status", `Couldn't load phrases: ${err.message}`);
+    return;
+  }
+  $("#phrases").replaceChildren(...groups.map((group) => {
+    const count = el("span");
+    const updateCount = () => {
+      count.textContent = `${group.phrases.filter((p) => p.in_database).length} / ${group.phrases.length} saved`;
+    };
+    updateCount();
+    return el("section", { className: "category" },
+      el("h2", {}, group.category, count),
+      el("ul", { className: "rows" }, ...group.phrases.map((p) => phraseRow(p, updateCount))),
+    );
+  }));
+}
+
+function phraseRow(p, onSaved) {
+  const side = el("div", { className: "row-side" });
+  const fill = () => {
+    const add = el("button", { type: "button", className: "btn", textContent: "+ Add" });
+    add.addEventListener("click", async () => {
+      add.disabled = true;
+      add.textContent = "Adding…";
+      try {
+        await api("/cards/", { method: "POST", body: JSON.stringify({ word: p.text, translation: p.translation, gender: null }) });
+        Object.assign(p, { in_database: true, is_due: true });
+        fill();
+        onSaved();
+        refreshDueCount();
+      } catch (err) {
+        add.disabled = false;
+        add.textContent = "+ Add";
+        showError("#phrases-status", `Couldn't add “${p.text}”: ${err.message}`);
+      }
+    });
+    side.replaceChildren(statusBadge(p) ?? add, audioButton(p.text));
+  };
+  fill();
+  return el("li", { className: "row" },
+    el("div", { className: "row-main" },
+      el("span", { className: "phrase-fr", lang: "fr", textContent: p.text }),
+      el("span", { className: "row-sub", textContent: p.translation }),
+    ),
+    side,
+  );
+}
+
+refreshDueCount();
+showTab(location.hash.slice(1));
+</script>
+</body>
+</html>
