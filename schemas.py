@@ -31,3 +31,34 @@ class CardResponse(BaseModel):
     @property
     def audio_url(self) -> str:
         return f"/api/tts/fr?text={quote(self.word)}"
+
+
+class ProcessTextRequest(BaseModel):
+    text: str
+
+
+class TokenResponse(BaseModel):
+    token: str
+    normalized: str
+    in_database: bool
+    card_id: int | None
+    is_due: bool
+
+
+class Meaning(BaseModel):
+    part_of_speech: str
+    definitions: list[str]
+
+
+class ExampleSentence(BaseModel):
+    french: str
+    english: str
+    tatoeba_id: int
+
+
+class LookupResponse(BaseModel):
+    word: str
+    part_of_speech: str | None  # of the primary (first) meaning
+    definition: str | None  # primary definition
+    meanings: list[Meaning]
+    examples: list[ExampleSentence]

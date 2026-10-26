@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>French Reader</title>
+<style>
+  :root {
+    --bg: #f6f6f3;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6a6a70;
+    --border: #dcdcd6;
+    --hover: #ecece6;
+    --accent: #2457d6;
+    --accent-text: #ffffff;
+    --known-bg: #d4eaff;
+    --known-text: #0b3a66;
+    --due-bg: #ffd49e;
+    --due-text: #5e2f00;
+    --danger: #b42318;
+    --shadow: 0 10px 40px rgba(0, 0, 0, .14);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416;
+      --surface: #1e1e21;
+      --text: #ececef;
+      --muted: #a2a2aa;
+      --border: #35353b;
+      --hover: #2a2a2f;
+      --accent: #7ea4ff;
+      --accent-text: #0d1a33;
+      --known-bg: #18395a;
+      --known-text: #d3e8ff;
+      --due-bg: #5a3311;
+      --due-text: #ffdcb3;
+      --danger: #ff8a80;
+      --shadow: 0 10px 40px rgba(0, 0, 0, .5);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .layout { padding: 24px 16px 48px; transition: padding-right .2s ease; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 20px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  textarea, input {
+    width: 100%;
+    font: inherit;
+    font-size: 16px; /* avoids iOS zoom on focus */
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #text { min-height: 160px; resize: vertical; }
+
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  .btn {
+    font: inherit;
+    font-weight: 600;
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 18px;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+  .btn:disabled { opacity: .6; cursor: progress; }
+  .hint { color: var(--muted); font-size: .875rem; }
+  .error { color: var(--danger); }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: .875rem; color: var(--muted); margin: 24px 0 8px; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+  .swatch.known { background: var(--known-bg); }
+  .swatch.due { background: var(--due-bg); }
+
+  #output {
+    font: 1.25rem/1.9 Georgia, "Iowan Old Style", "Times New Roman", serif;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+  #output:empty::before { content: "Your text will appear here."; color: var(--muted); font: 1rem system-ui, sans-serif; }
+  #stats { margin: 0 0 8px; }
+
+  .word {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    margin: 0;
+    padding: 0; /* no padding, so "l'" + "homme" sit flush; highlights extend via box-shadow */
+    line-height: 1.35;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .word:hover { background: var(--hover); box-shadow: 0 0 0 2px var(--hover); }
+  .word.known { background: var(--known-bg); box-shadow: 0 0 0 2px var(--known-bg); color: var(--known-text); }
+  .word.due { background: var(--due-bg); box-shadow: 0 0 0 2px var(--due-bg); color: var(--due-text); }
+  .word:focus-visible, .word.active { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* Lookup panel: bottom sheet on phones, side panel on wide screens. */
+  .panel {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: var(--shadow);
+    animation: sheet-in .2s ease;
+    z-index: 10;
+  }
+  .panel[hidden] { display: none; }
+  @keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } }
+  @keyframes panel-in { from { transform: translateX(24px); opacity: 0; } }
+  @media (max-width: 899px) {
+    /* Room to scroll the text above the sheet. */
+    body.panel-open .layout { padding-bottom: 60vh; }
+  }
+  @media (min-width: 900px) {
+    .panel {
+      top: 0; left: auto;
+      width: 400px;
+      max-height: none;
+      border-top: 0;
+      border-left: 1px solid var(--border);
+      border-radius: 0;
+      animation-name: panel-in;
+    }
+    body.panel-open .layout { padding-right: 416px; }
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-head h2 { margin: 0 0 4px; font: 600 1.5rem Georgia, serif; overflow-wrap: anywhere; }
+  .icon-btn {
+    font-size: 1.5rem;
+    line-height: 1;
+    width: 36px; height: 36px;
+    flex: none;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .badge { font-size: .75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--hover); color: var(--muted); }
+  .badge.known { background: var(--known-bg); color: var(--known-text); }
+  .badge.due { background: var(--due-bg); color: var(--due-text); }
+
+  .panel-body { overflow-y: auto; padding: 4px 16px 20px; }
+  .panel-body h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+  .panel-body ol { margin: 0; padding-left: 20px; }
+  .panel-body li { margin-bottom: 4px; }
+  .examples { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .example {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  .example:hover { border-color: var(--accent); }
+  .example.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .example .fr { font-family: Georgia, serif; }
+  .example .en { color: var(--muted); font-size: .9rem; }
+  .credits { font-size: .75rem; color: var(--muted); margin-top: 12px; }
+  .credits a { color: inherit; }
+
+  #save-form { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 16px; display: grid; gap: 10px; }
+  #save-form[hidden] { display: none; }
+  #save-form label { display: grid; gap: 4px; font-size: .875rem; font-weight: 600; }
+  #save-form textarea { min-height: 64px; resize: vertical; }
+  #saved-note { border-top: 1px solid var(--border); margin: 20px 0 0; padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <main>
+    <h1>French Reader</h1>
+    <p class="subtitle">Paste French text, then tap any word to look it up or save it.</p>
+
+    <form id="reader-form" class="card">
+      <textarea id="text" placeholder="Collez votre texte ici…" aria-label="French text" spellcheck="false"></textarea>
+      <div class="row">
+        <button id="submit" class="btn" type="submit">Read text</button>
+        <span id="status" class="hint">Ctrl+Enter to submit</span>
+      </div>
+    </form>
+
+    <div class="legend" aria-hidden="true">
+      <span><span class="swatch known"></span>In your cards</span>
+      <span><span class="swatch due"></span>Due for review</span>
+    </div>
+    <section class="card">
+      <p id="stats" class="hint" hidden></p>
+      <div id="output" aria-live="polite"></div>
+    </section>
+  </main>
+</div>
+
+<aside id="panel" class="panel" hidden aria-labelledby="panel-word">
+  <header class="panel-head">
+    <div>
+      <h2 id="panel-word"></h2>
+      <span id="panel-badge" class="badge"></span>
+    </div>
+    <button id="panel-close" class="icon-btn" type="button" aria-label="Close">×</button>
+  </header>
+  <div class="panel-body">
+    <div id="lookup"></div>
+    <form id="save-form" hidden>
+      <label>Translation
+        <input id="save-translation" required autocomplete="off">
+      </label>
+      <label>Example sentence
+        <textarea id="save-example" placeholder="Optional — tap an example above to use it"></textarea>
+      </label>
+      <button id="save-btn" class="btn" type="submit">Save to Cards</button>
+      <p id="save-error" class="error" hidden></p>
+    </form>
+    <p id="saved-note" hidden></p>
+  </div>
+</aside>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const textInput = $("#text");
+const output = $("#output");
+const panel = $("#panel");
+const lookupBox = $("#lookup");
+const saveForm = $("#save-form");
+
+let currentText = "";
+let tokens = [];
+let activeIndex = null;
+const lookupCache = new Map(); // normalized word -> lookup result or {error}
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+async function api(path, options = {}) {
+  const resp = await fetch(path, {
+    ...options,
+    headers: options.body ? { "Content-Type": "application/json" } : undefined,
+  });
+  const body = await resp.json().catch(() => null);
+  if (!resp.ok) {
+    const detail = typeof body?.detail === "string" ? body.detail : `Request failed (${resp.status})`;
+    throw Object.assign(new Error(detail), { status: resp.status });
+  }
+  return body;
+}
+
+function tokenState(tok) {
+  return tok.is_due ? "due" : tok.in_database ? "known" : "";
+}
+
+// ---- Reading ----
+
+$("#reader-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = textInput.value;
+  if (!text.trim()) return;
+  const btn = $("#submit");
+  const status = $("#status");
+  btn.disabled = true;
+  status.className = "hint";
+  status.textContent = "Processing…";
+  try {
+    await loadTokens(text);
+    status.textContent = "Ctrl+Enter to submit";
+  } catch (err) {
+    status.className = "error";
+    status.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+textInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("#reader-form").requestSubmit();
+});
+
+async function loadTokens(text) {
+  tokens = await api("/api/process-text", { method: "POST", body: JSON.stringify({ text }) });
+  if (text !== currentText) activeIndex = null;
+  currentText = text;
+  render();
+}
+
+function render() {
+  // The API returns words only, so find each one in the original text to keep
+  // spacing, punctuation and line breaks. The tokenizer sees NFC text with curly
+  // apostrophes straightened; that swap is one-for-one, so indices into `search`
+  // line up with `display`.
+  const display = currentText.normalize("NFC");
+  const search = display.replace(/[’ʼ‘]/g, "'");
+  const frag = document.createDocumentFragment();
+  let cursor = 0;
+
+  tokens.forEach((tok, i) => {
+    const start = search.indexOf(tok.token, cursor);
+    const btn = el("button", { type: "button", className: `word ${tokenState(tok)}` });
+    btn.dataset.index = i;
+    if (i === activeIndex) btn.classList.add("active");
+    if (start === -1) {
+      btn.textContent = tok.token;
+    } else {
+      frag.append(display.slice(cursor, start));
+      btn.textContent = display.slice(start, start + tok.token.length);
+      cursor = start + tok.token.length;
+    }
+    frag.append(btn);
+  });
+  frag.append(display.slice(cursor));
+  output.replaceChildren(frag);
+
+  const unique = new Map(tokens.map((t) => [t.normalized, t]));
+  const known = [...unique.values()].filter((t) => t.in_database).length;
+  const due = [...unique.values()].filter((t) => t.is_due).length;
+  const stats = $("#stats");
+  stats.hidden = tokens.length === 0;
+  stats.textContent = `${unique.size} unique words · ${known} in your cards · ${due} due`;
+}
+
+output.addEventListener("click", (e) => {
+  const btn = e.target.closest("button.word");
+  if (btn) openPanel(Number(btn.dataset.index));
+});
+
+// ---- Lookup panel ----
+
+async function openPanel(index) {
+  output.querySelector(".word.active")?.classList.remove("active");
+  output.querySelector(`[data-index="${index}"]`)?.classList.add("active");
+  activeIndex = index;
+
+  const tok = tokens[index];
+  $("#panel-word").textContent = tok.normalized;
+  updatePanelStatus(tok);
+  lookupBox.replaceChildren(el("p", { className: "hint", textContent: "Looking up…" }));
+  saveForm.hidden = true;
+  $("#save-error").hidden = true;
+  panel.hidden = false;
+  document.body.classList.add("panel-open");
+
+  let result = lookupCache.get(tok.normalized);
+  if (!result) {
+    try {
+      result = await api(`/api/lookup/${encodeURIComponent(tok.normalized)}`);
+      lookupCache.set(tok.normalized, result);
+    } catch (err) {
+      result = { error: err };
+      if (err.status === 404) lookupCache.set(tok.normalized, result); // don't cache outages
+    }
+  }
+  if (activeIndex !== index) return; // another word was clicked meanwhile
+  renderLookup(tok, result);
+}
+
+function closePanel() {
+  panel.hidden = true;
+  document.body.classList.remove("panel-open");
+  output.querySelector(".word.active")?.classList.remove("active");
+  activeIndex = null;
+}
+
+$("#panel-close").addEventListener("click", closePanel);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !panel.hidden) closePanel();
+});
+
+function updatePanelStatus(tok) {
+  const badge = $("#panel-badge");
+  const state = tokenState(tok);
+  badge.className = `badge ${state}`;
+  badge.textContent = { due: "Due for review", known: "In your cards", "": "New word" }[state];
+
+  const note = $("#saved-note");
+  note.hidden = !tok.in_database;
+  note.textContent = tok.is_due
+    ? "This word is in your cards and due for review."
+    : "This word is already in your cards.";
+}
+
+function renderLookup(tok, result) {
+  const parts = [];
+
+  if (result.error) {
+    parts.push(el("p", {
+      className: result.error.status === 404 ? "hint" : "error",
+      textContent: result.error.status === 404
+        ? "No dictionary entry found. You can still save it with your own translation."
+        : `Couldn't reach the dictionary: ${result.error.message}`,
+    }));
+  } else {
+    for (const meaning of result.meanings) {
+      parts.push(
+        el("h3", { textContent: meaning.part_of_speech }),
+        el("ol", {}, ...meaning.definitions.map((d) => el("li", { textContent: d }))),
+      );
+    }
+    if (result.examples.length) {
+      parts.push(
+        el("h3", { textContent: "Examples" }),
+        el("ul", { className: "examples" }, ...result.examples.map((ex) => {
+          const btn = el("button", { type: "button", className: "example", title: "Use as the card's example" },
+            el("div", { className: "fr", textContent: ex.french }),
+            el("div", { className: "en", textContent: ex.english }),
+          );
+          btn.addEventListener("click", () => selectExample(btn, ex.french));
+          return el("li", {}, btn);
+        })),
+      );
+    }
+    parts.push(el("p", { className: "credits" },
+      "Definitions: ",
+      el("a", { href: `https://en.wiktionary.org/wiki/${encodeURIComponent(tok.normalized)}`, target: "_blank", rel: "noopener", textContent: "Wiktionary" }),
+      " (CC BY-SA). Examples: ",
+      el("a", { href: "https://tatoeba.org", target: "_blank", rel: "noopener", textContent: "Tatoeba" }),
+      " (CC BY).",
+    ));
+  }
+  lookupBox.replaceChildren(...parts);
+
+  if (!tok.in_database) {
+    $("#save-translation").value = result.definition ?? "";
+    $("#save-example").value = "";
+    const first = lookupBox.querySelector(".example");
+    if (first) selectExample(first, result.examples[0].french);
+    saveForm.hidden = false;
+  }
+}
+
+function selectExample(btn, french) {
+  lookupBox.querySelectorAll(".example.selected").forEach((b) => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  $("#save-example").value = french;
+}
+
+saveForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const index = activeIndex;
+  const tok = tokens[index];
+  const btn = $("#save-btn");
+  const error = $("#save-error");
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  error.hidden = true;
+  try {
+    await api("/cards/", {
+      method: "POST",
+      body: JSON.stringify({
+        word: tok.normalized,
+        translation: $("#save-translation").value.trim(),
+        example_sentence: $("#save-example").value.trim() || null,
+      }),
+    });
+    await loadTokens(currentText); // refresh highlights for every occurrence
+    if (activeIndex === index) {
+      saveForm.hidden = true;
+      updatePanelStatus(tokens[index]);
+      $("#saved-note").textContent = "Saved to your cards.";
+    }
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save to Cards";
+  }
+});
+</script>
+</body>
+</html>
