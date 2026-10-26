@@ -18,6 +18,8 @@ class Card(Base):
     # Inflected forms from the dictionary ("maisons", "vais"...) so the reader can match them.
     # NULL means not fetched yet; [] means the dictionary had none.
     forms: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    # Multi-word cards only: per-token alternatives ("avoir besoin de" -> [[avoir, ai, as, a, …], [besoin], [de, d']]).
+    phrase_forms: Mapped[list[list[str]] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
 
     # SM-2 state
     repetitions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

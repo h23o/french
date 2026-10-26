@@ -4,6 +4,8 @@ from urllib.parse import quote
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field, field_validator
 
+from app.services.text_processor import find_cloze
+
 # Noun gender: masculine, feminine, or either ("un/une élève").
 Gender = Literal["m", "f", "mf"]
 INDEFINITE_ARTICLES = {"m": "un", "f": "une"}
@@ -45,6 +47,12 @@ class CardReview(BaseModel):
     quality: int = Field(ge=0, le=5)
 
 
+class Cloze(BaseModel):
+    before: str
+    answer: str  # as it appears in the sentence, e.g. "vais" for the card "aller"
+    after: str
+
+
 class CardResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -58,6 +66,18 @@ class CardResponse(BaseModel):
     easiness: float
     next_review: UTCDateTime
     created_at: UTCDateTime
+    # Read from the card for computing `cloze`, but not sent (verbs have ~60 forms).
+    forms: list[str] | None = Field(default=None, exclude=True)
+    phrase_forms: list[list[str]] | None = Field(default=None, exclude=True)
+
+    @computed_field
+    @property
+    def cloze(self) -> Cloze | None:
+        """The example sentence split around this card's word, for fill-in-the-blank review."""
+        if not self.example_sentence:
+            return None
+        parts = find_cloze(self.example_sentence, self.word, self.forms, self.phrase_forms)
+        return Cloze(**parts) if parts else None
 
     @computed_field
     @property
@@ -202,3 +222,24 @@ class BankPhrase(CardStatus):
 class PhraseCategory(BaseModel):
     category: str
     phrases: list[BankPhrase]
+
+
+# ---- Conjugation ----
+
+
+class ConjugationRow(BaseModel):
+    subject: str  # "je", "j'", "que tu", "" for the imperative
+    form: str  # "vais"; variants joined with " / "
+
+
+class Tense(BaseModel):
+    name: str  # "Présent", "Passé composé", …
+    rows: list[ConjugationRow]
+
+
+class ConjugationResponse(BaseModel):
+    infinitive: str
+    auxiliary: Literal["avoir", "être"]
+    present_participle: str | None
+    past_participle: str | None
+    tenses: list[Tense]

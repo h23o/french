@@ -266,6 +266,16 @@
   }
   .phrase-link button:hover { text-decoration: underline; }
 
+  .conj-meta { font-size: .8125rem; color: var(--muted); margin: 0 0 10px; }
+  .conj-meta b { color: var(--text); font: 600 .875rem Georgia, serif; }
+  .conj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .conj-table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+  .conj-table caption { text-align: left; font-size: .75rem; font-weight: 600; color: var(--muted); padding-bottom: 4px; }
+  .conj-table td { padding: 2px 6px; border-top: 1px solid var(--border); }
+  .conj-table td:last-child { font-family: Georgia, serif; }
+  .conj-table .subj { color: var(--muted); white-space: nowrap; width: 1%; text-align: right; }
+  .conj-table tr.hit td { background: var(--due-bg); color: var(--due-text); }
+
   .heading-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
   .heading-row h2 { margin: 0; }
   .audio-btn {
@@ -858,6 +868,9 @@ function renderLookup(result) {
         el("ol", {}, ...meaning.definitions.map((d) => el("li", { textContent: d }))),
       );
     }
+    if (!word.includes(" ") && /(er|ir|ïr|re)$/.test(word) && result.meanings.some((m) => m.part_of_speech === "verb")) {
+      parts.push(conjugationSection(word));
+    }
     if (result.examples.length) {
       parts.push(
         el("h3", { textContent: "Examples" }),
@@ -894,6 +907,53 @@ function renderLookup(result) {
     $("#save-btn").textContent = `Save “${word}” to Cards`;
     saveForm.hidden = false;
   }
+}
+
+// ---- Conjugation ----
+
+const conjugationCache = new Map();
+
+function conjugationSection(verb) {
+  const box = el("div", { className: "conjugation" });
+  // Arriving from a form ("vais" -> "aller") opens the table with that form highlighted.
+  const highlight = view.from ? normalizePhrase(view.from.word) : "";
+  const load = async () => {
+    btn.disabled = true;
+    btn.textContent = "Loading…";
+    try {
+      const data = conjugationCache.get(verb) ?? (await api(`/api/conjugate/${encodeURIComponent(verb)}`));
+      conjugationCache.set(verb, data);
+      box.replaceChildren(conjugationTables(data, highlight));
+    } catch (err) {
+      box.replaceChildren(el("p", {
+        className: err.status === 404 ? "hint" : "error",
+        textContent: err.status === 404 ? "No conjugation table for this word." : `Couldn't load the conjugation: ${err.message}`,
+      }));
+    }
+  };
+  const btn = el("button", { type: "button", className: "chip", textContent: "Show conjugation" });
+  btn.addEventListener("click", load);
+  box.append(btn);
+  if (highlight) load();
+  return el("section", {}, el("h3", { textContent: "Conjugation" }), box);
+}
+
+function conjugationTables(data, highlight) {
+  const facts = [["auxiliary", data.auxiliary], ["past participle", data.past_participle], ["present participle", data.present_participle]]
+    .filter(([, value]) => value)
+    .flatMap(([label, value], i) => [i ? " · " : "", `${label} `, el("b", { lang: "fr", textContent: value })]);
+  return el("div", {},
+    el("p", { className: "conj-meta" }, ...facts),
+    el("div", { className: "conj-grid" }, ...data.tenses.map((tense) =>
+      el("table", { className: "conj-table" },
+        el("caption", { textContent: tense.name }),
+        el("tbody", {}, ...tense.rows.map((row) =>
+          el("tr", { className: highlight && row.form.split(" / ").includes(highlight) ? "hit" : "" },
+            el("td", { className: "subj", lang: "fr", textContent: row.subject }),
+            el("td", { lang: "fr", textContent: row.form }),
+          ))),
+      ))),
+  );
 }
 
 function selectExample(btn, french) {

@@ -20,7 +20,7 @@ from urllib.parse import quote
 
 import httpx
 
-from app.services.text_processor import normalize_word
+from app.services.text_processor import normalize_word, tokenize
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +215,167 @@ async def fetch_word_info(word: str) -> dict | None:
         logger.warning("Couldn't fetch forms for %r: %r", word, exc)
         return None
     return {"gender": _gender(entries), "forms": _forms(entries)}
+
+
+# ---- Phrase alternatives ----
+
+# Elided and full spellings of the same little word: "avoir besoin de" also matches "besoin d'aide".
+ELISIONS = {"de": "d'", "le": "l'", "la": "l'", "je": "j'", "me": "m'", "te": "t'", "se": "s'", "ne": "n'", "que": "qu'", "ce": "c'"}
+ELISIONS |= {elided: full for full, elided in ELISIONS.items() if elided != "l'"}
+# A reflexive "se" in a saved phrase is "me/te/nous…" once conjugated ("se rendre compte" -> "je me rends compte").
+REFLEXIVE_PRONOUNS = ["me", "m'", "te", "t'", "se", "s'", "nous", "vous"]
+# The dictionary API has no entry for the single letter "a", which is the "a" of "il y a".
+VERB_FORM_FALLBACK = {"a": "avoir"}
+
+
+def _verb_entries(entries: list[dict]) -> list[dict]:
+    return [e for e in entries if e["partOfSpeech"].lower() == "verb"]
+
+
+async def _verb_forms(client: httpx.AsyncClient, word: str) -> list[str]:
+    """Every form of the verb this word is, or is a form of ("a" -> avoir, avait, aura…); [] if not a verb."""
+    if word in VERB_FORM_FALLBACK:
+        base = VERB_FORM_FALLBACK[word]
+        return [base, *_forms(_verb_entries(await _free_dictionary_entries(client, base)))]
+    entries = _verb_entries(await _free_dictionary_entries(client, word))
+    if not entries:
+        return []
+    if any(not _is_form_of(sense) for entry in entries for sense in entry["senses"]):
+        return [word, *_forms(entries)]
+    bases = [b["word"] for b in _base_forms(entries, word) if b["part_of_speech"] == "verb"]
+    if not bases:
+        return []
+    return [bases[0], *_forms(_verb_entries(await _free_dictionary_entries(client, bases[0])))]
+
+
+async def fetch_phrase_forms(phrase: str) -> list[list[str]] | None:
+    """Per-token alternatives for a multi-word card, or None if the dictionary couldn't be reached.
+
+    Only the phrase's first verb is conjugated (plus elision, and a reflexive "se" right
+    before that verb), so "il y a" matches "il y avait" and "se rendre compte" matches
+    "je me rends compte", but nouns like "compte" don't turn into verbs.
+    """
+    parts = [normalize_word(t) for t in tokenize(phrase)]
+    try:
+        async with _client() as client:
+            verb_forms = await asyncio.gather(*(_verb_forms(client, part) for part in parts))
+    except UPSTREAM_ERRORS as exc:
+        logger.warning("Couldn't fetch phrase forms for %r: %r", phrase, exc)
+        return None
+    verb_at = next((i for i, forms in enumerate(verb_forms) if forms), None)
+    alternatives = []
+    for i, part in enumerate(parts):
+        options = {part}
+        if i == verb_at:
+            options.update(verb_forms[i])
+        if part in ELISIONS:
+            options.add(ELISIONS[part])
+        if part in ("se", "s'") and verb_at == i + 1:
+            options.update(REFLEXIVE_PRONOUNS)
+        alternatives.append(sorted(options))
+    return alternatives
+
+
+# ---- Conjugation tables ----
+
+TENSES = [
+    ("Présent", {"indicative", "present"}),
+    ("Imparfait", {"indicative", "imperfect"}),
+    ("Futur", {"indicative", "future"}),
+    ("Conditionnel", {"conditional"}),
+    ("Subjonctif présent", {"subjunctive", "present"}),
+    ("Passé simple", {"historic", "past"}),
+]
+PERSONS = [
+    ("je", {"first-person", "singular"}),
+    ("tu", {"second-person", "singular"}),
+    ("il/elle", {"third-person", "singular"}),
+    ("nous", {"first-person", "plural"}),
+    ("vous", {"second-person", "plural"}),
+    ("ils/elles", {"third-person", "plural"}),
+]
+AUXILIARY_PRESENT = {
+    "avoir": ["ai", "as", "a", "avons", "avez", "ont"],
+    "être": ["suis", "es", "est", "sommes", "êtes", "sont"],
+}
+# Verbs starting with an aspirated h don't elide: "je hais", not "j'hais".
+H_ASPIRE = {"haïr", "hacher", "harceler", "hanter", "hâter", "hausser", "héler", "heurter", "hisser", "huer", "hurler"}
+VOWELS = "aeiouyàâäéèêëîïôöùûüœæ"
+
+
+def _subject(pronoun: str, form: str, infinitive: str, subjunctive: bool = False) -> str:
+    """"je" + "aime" -> "j'"; subjunctive rows get "que": "que je", "qu'il/elle"."""
+    elides = form[:1] in VOWELS or (form[:1] == "h" and infinitive not in H_ASPIRE)
+    subject = "j'" if pronoun == "je" and elides else pronoun
+    if subjunctive:
+        subject = f"qu'{subject}" if subject[0] in "ie" else f"que {subject}"
+    return subject
+
+
+async def fetch_conjugation(verb: str) -> dict | None:
+    """Main conjugation tables for a verb, or None if the dictionary has no conjugation for it."""
+    try:
+        async with _client() as client:
+            entries = await _free_dictionary_entries(client, verb)
+    except UPSTREAM_ERRORS as exc:
+        raise ExternalAPIError(f"Dictionary lookup failed: {exc!r}") from exc
+    # A conjugated verb entry has dozens of forms; others ("aller" the noun) have a plural at most.
+    entry = next((e for e in _verb_entries(entries) if len(e.get("forms", [])) > 20), None)
+    if entry is None:
+        return None
+
+    raw = entry["forms"]
+    # Plain single words only: drops IPA ("mɑ̃ʒ"), pronominal variants ("me suis", "t'es", "sois-toi") and templates.
+    forms = [
+        f
+        for f in raw
+        if not set(f.get("tags", [])) & TABLE_TAGS
+        and FRENCH_WORD_RE.match(normalize_word(f["word"]))
+        and not set("-'") & set(normalize_word(f["word"]))
+    ]
+
+    def find(required: set[str]) -> str:
+        found = []
+        for f in forms:
+            if required <= set(f.get("tags", [])) and f["word"] not in found:
+                found.append(f["word"])
+        return " / ".join(found)  # some cells have variants: "paie / paye"
+
+    infinitive = normalize_word(verb)
+    auxiliary = "être" if any(f["word"].startswith("être +") for f in raw) else "avoir"
+    past_participle = find({"participle", "past"}).split(" / ")[0]
+    tenses = []
+    for name, tags in TENSES:
+        rows = []
+        for pronoun, person in PERSONS:
+            form = find(tags | person)
+            rows.append({"subject": _subject(pronoun, form, infinitive, subjunctive="subjunctive" in tags), "form": form})
+        tenses.append({"name": name, "rows": rows})
+
+    if past_participle:
+        # Passé composé = auxiliary + past participle, which agrees with the subject after être.
+        endings = ["(e)", "(e)", "(e)", "(e)s", "(e)s", "(e)s"] if auxiliary == "être" else [""] * 6
+        rows = [
+            {"subject": _subject(pronoun, aux, infinitive), "form": f"{aux} {past_participle}{ending}"}
+            for (pronoun, _), aux, ending in zip(PERSONS, AUXILIARY_PRESENT[auxiliary], endings)
+        ]
+        tenses.insert(1, {"name": "Passé composé", "rows": rows})
+
+    imperative = [
+        {"subject": "", "form": find({"imperative"} | person)}  # no subject: "va", "allons", "allez"
+        for pronoun, person in PERSONS
+        if pronoun in ("tu", "nous", "vous")
+    ]
+    if any(row["form"] for row in imperative):
+        tenses.append({"name": "Impératif", "rows": imperative})
+
+    return {
+        "infinitive": infinitive,
+        "auxiliary": auxiliary,
+        "present_participle": find({"participle", "present"}).split(" / ")[0] or None,
+        "past_participle": past_participle or None,
+        "tenses": [t for t in tenses if any(row["form"] for row in t["rows"])],
+    }
 
 
 # ---- Tatoeba ----

@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from app.services import tts_cache
-from app.services.enrichment import apply_word_info, enrich_missing_cards
-from app.services.external_api import ExternalAPIError, fetch_word_info, lookup_word
+from app.services.enrichment import apply_card_data, enrich_missing_cards, fetch_card_data
+from app.services.external_api import ExternalAPIError, fetch_conjugation, lookup_word
 from app.services.library import summarize
 from app.services.text_processor import CardIndex, process_text
 from app.services.word_bank import bank_phrases, bank_words
@@ -60,8 +60,8 @@ async def create_card(card: schemas.CardCreate, db: Session = Depends(get_db)):
     db_card = models.Card(**card.model_dump())
     # Fetch inflected forms now so the reader matches "maisons" as soon as "maison" is saved.
     # If the dictionary is unreachable the card is still saved and forms are retried at startup.
-    info = await fetch_word_info(db_card.word)
-    apply_word_info(db_card, info, fill_gender="gender" not in card.model_fields_set)
+    data = await fetch_card_data(db_card.word)
+    apply_card_data(db_card, data, fill_gender="gender" not in card.model_fields_set)
     db.add(db_card)
     db.commit()
     db.refresh(db_card)
@@ -88,8 +88,8 @@ async def update_card(card_id: int, changes: schemas.CardUpdate, db: Session = D
         setattr(card, field, value)
     if word_changed:
         # The old forms belong to the old word; keep whatever gender the user has set.
-        card.forms = None
-        apply_word_info(card, await fetch_word_info(card.word), fill_gender=False)
+        card.forms = card.phrase_forms = None
+        apply_card_data(card, await fetch_card_data(card.word), fill_gender=False)
     db.commit()
     db.refresh(card)
     return card
@@ -203,6 +203,17 @@ async def lookup(word: str = Path(min_length=1, max_length=100)):
         raise HTTPException(status_code=502, detail=f"Upstream lookup failed: {exc}")
     if not result["meanings"] and not result["examples"]:
         raise HTTPException(status_code=404, detail=f"No definitions or examples found for '{word}'")
+    return result
+
+
+@app.get("/api/conjugate/{verb}", response_model=schemas.ConjugationResponse)
+async def conjugate(verb: str = Path(min_length=1, max_length=60)):
+    try:
+        result = await fetch_conjugation(verb)
+    except ExternalAPIError as exc:
+        raise HTTPException(status_code=502, detail=f"Upstream lookup failed: {exc}")
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"No conjugation found for '{verb}'")
     return result
 
 

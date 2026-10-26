@@ -153,12 +153,27 @@
   .audio-btn svg { width: 50%; height: 50%; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); } }
 
+  /* Full width, so a typed-answer box can't push the card wider than the screen. */
+  #front { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #front:empty { display: none; }
   .back { width: 100%; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 4px; display: grid; gap: 10px; justify-items: center; animation: reveal .2s ease; }
+  #front:empty + .back { border-top: 0; padding-top: 0; margin-top: 0; } /* Fill in shows only the back once revealed */
   @keyframes reveal { from { opacity: 0; transform: translateY(-6px); } }
   .back .french { font-size: clamp(1.75rem, 7vw, 2.4rem); }
   .back .english { font-size: 1.375rem; }
   .example { display: flex; align-items: center; justify-content: center; gap: 8px; }
   #example { font: italic 1.0625rem/1.5 Georgia, serif; color: var(--muted); margin: 0; }
+
+  /* Fill in / Listen */
+  .cloze-sentence { font: 1.35rem/1.6 Georgia, "Iowan Old Style", serif; margin: 0; overflow-wrap: anywhere; }
+  .blank { display: inline-block; min-width: 4em; border-bottom: 2px solid var(--accent); margin: 0 .1em; }
+  .base-hint { color: var(--muted); font-size: .85em; }
+  .cloze-sentence mark { background: var(--good-bg); color: var(--good-text); border-radius: 4px; padding: 0 .15em; }
+  .audio-btn.big { width: 76px; height: 76px; }
+  .text-btn { font: inherit; font-size: .875rem; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
+  .text-btn:hover { text-decoration: underline; }
+  .card-word { margin: 0; font-size: .9375rem; color: var(--muted); }
+  .card-word b { color: var(--text); font-family: Georgia, serif; }
 
   /* Typed answers */
   .answer-form { width: 100%; max-width: 360px; display: flex; gap: 8px; }
@@ -234,12 +249,14 @@
   <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
 
   <div class="settings">
-    <div class="segmented" role="group" aria-label="Direction">
-      <button type="button" data-direction="fr-en" aria-pressed="true">FR → EN</button>
-      <button type="button" data-direction="en-fr" aria-pressed="false">EN → FR</button>
+    <div class="segmented" role="group" aria-label="Mode">
+      <button type="button" data-direction="fr-en" aria-pressed="true" title="See the French, recall the English">FR → EN</button>
+      <button type="button" data-direction="en-fr" aria-pressed="false" title="See the English, recall the French">EN → FR</button>
+      <button type="button" data-direction="cloze" aria-pressed="false" title="Fill the word into its example sentence">Fill in</button>
+      <button type="button" data-direction="listen" aria-pressed="false" title="Hear it, type what you heard">Listen</button>
     </div>
     <div class="toggles">
-      <label id="typed-label" title="Type the French instead of just revealing it (EN → FR only)">
+      <label id="typed-label" title="Type the French instead of just revealing it (EN → FR and Fill in; Listen is always typed)">
         <input id="opt-typed" type="checkbox"> Type answer
       </label>
       <label title="Cards you miss (0–2) come back at the end of this session for practice. Practice ratings aren't saved.">
@@ -311,15 +328,20 @@ function saveSettings() {
     /* ignore */
   }
 }
-const typedMode = () => settings.direction === "en-fr" && settings.typed;
+// The mode used for a card: "Fill in" needs an example sentence containing the word,
+// so cards without one are asked EN → FR instead.
+const modeFor = (c) => (settings.direction === "cloze" && !c.cloze ? "en-fr" : settings.direction);
+// Listen is always typed; FR → EN never is (English answers are too free-form to check).
+const isTyped = (m) => m === "listen" || (settings.typed && (m === "en-fr" || m === "cloze"));
 
 function syncSettingsUI() {
   document.querySelectorAll("[data-direction]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.direction === settings.direction));
-  $("#opt-typed").checked = settings.typed;
-  $("#opt-typed").disabled = settings.direction !== "en-fr";
-  $("#typed-label").classList.toggle("disabled", settings.direction !== "en-fr");
+  const optional = settings.direction === "en-fr" || settings.direction === "cloze";
+  $("#opt-typed").checked = settings.typed || settings.direction === "listen";
+  $("#opt-typed").disabled = !optional;
+  $("#typed-label").classList.toggle("disabled", !optional);
   $("#opt-repeat").checked = settings.repeat;
-  $("#keys").innerHTML = typedMode()
+  $("#keys").innerHTML = isTyped(settings.direction)
     ? "<kbd>Enter</kbd> check, then <kbd>Enter</kbd> accept the suggested rating · <kbd>0</kbd>–<kbd>5</kbd> rate"
     : "<kbd>Space</kbd> reveal · <kbd>0</kbd>–<kbd>5</kbd> rate · <kbd>P</kbd> play";
 }
@@ -350,6 +372,7 @@ function settingsChanged() {
 
 let queue = [];
 let current = null; // queue[0] while it's on screen
+let mode = "fr-en"; // how the current card is being asked (see modeFor)
 let revealed = false;
 let suggestion = null; // rating suggested by a typed answer
 let busy = false;
@@ -426,8 +449,8 @@ function frenchHeading(c) {
   );
 }
 
-function audioButton(text, label, small = false) {
-  const btn = el("button", { type: "button", className: `audio-btn${small ? " small" : ""}` });
+function audioButton(text, label, size = "") {
+  const btn = el("button", { type: "button", className: `audio-btn ${size}` });
   btn.innerHTML = SPEAKER_ICON;
   btn.setAttribute("aria-label", label);
   btn.addEventListener("click", (e) => {
@@ -440,8 +463,31 @@ function audioButton(text, label, small = false) {
 const wordAudioUrl = (c) => c.audio_url; // includes the article for nouns
 const sentenceAudioUrl = (text) => `/api/tts/fr?text=${encodeURIComponent(text)}`;
 
+function answerForm(placeholder) {
+  const input = el("input", {
+    id: "answer", autocomplete: "off", autocapitalize: "off", spellcheck: false, lang: "fr", placeholder, ariaLabel: "Your answer",
+  });
+  const form = el("form", { className: "answer-form" }, input, el("button", { type: "submit", className: "btn", textContent: "Check" }));
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    checkTyped(input.value);
+  });
+  return form;
+}
+
+// "Je ___ (aller) au marché." — the base form is shown when the answer is an inflection.
+function clozeSentence(c, revealAnswer) {
+  const { before, answer, after } = c.cloze;
+  const middle = revealAnswer
+    ? [el("mark", { textContent: answer })]
+    : [el("span", { className: "blank", ariaLabel: "blank" }),
+       ...(normalizeAnswer(answer) !== normalizeAnswer(c.word) ? [el("span", { className: "base-hint", textContent: ` (${c.word})` })] : [])];
+  return el("p", { className: "cloze-sentence", lang: "fr" }, before, ...middle, after);
+}
+
 function showCard() {
   const c = current.card;
+  mode = modeFor(c);
   revealed = false;
   suggestion = null;
   card.classList.remove("revealed", "leaving", "typing");
@@ -450,34 +496,36 @@ function showCard() {
   $("#back").replaceChildren();
   ratings.hidden = true;
   ratings.querySelectorAll(".suggested").forEach((b) => b.classList.remove("suggested"));
+  const typed = isTyped(mode);
 
   const front = [];
-  if (settings.direction === "fr-en") {
+  if (mode === "fr-en") {
     front.push(el("div", { className: "word-row" }, frenchHeading(c), audioButton(wordAudioUrl(c), "Play pronunciation")));
-    front.push(el("p", { className: "hint-line", textContent: "Tap to reveal" }));
-  } else {
+  } else if (mode === "en-fr") {
     front.push(el("p", { className: "english", textContent: c.translation }));
-    front.push(el("p", { className: "hint-line", textContent: c.gender ? "noun — include un / une" : c.word.includes(" ") ? "phrase" : "" }));
-    if (typedMode()) {
-      const input = el("input", {
-        id: "answer", autocomplete: "off", autocapitalize: "off", spellcheck: false, lang: "fr",
-        placeholder: "Type the French…", ariaLabel: "Your answer",
-      });
-      const form = el("form", { className: "answer-form" }, input, el("button", { type: "submit", className: "btn", textContent: "Check" }));
-      form.addEventListener("submit", (e) => {
-        e.preventDefault();
-        checkTyped(input.value);
-      });
-      front.push(form);
-    } else {
-      front.push(el("p", { className: "hint-line", textContent: "Say it, then tap to reveal" }));
-    }
+    const hint = c.gender ? "noun — include un / une" : c.word.includes(" ") ? "phrase" : "";
+    if (hint) front.push(el("p", { className: "hint-line", textContent: hint }));
+    if (settings.direction === "cloze") front.push(el("p", { className: "hint-line", textContent: "No example sentence for this card — translate it instead." }));
+  } else if (mode === "cloze") {
+    front.push(clozeSentence(c, false), el("p", { className: "hint-line", textContent: c.translation }));
+  } else if (mode === "listen") {
+    const play = audioButton(wordAudioUrl(c), "Play again", "big");
+    const hintBtn = el("button", { type: "button", className: "text-btn", textContent: "Show a hint" });
+    hintBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      hintBtn.replaceWith(el("p", { className: "hint-line", textContent: c.translation }));
+    });
+    front.push(play, el("p", { className: "hint-line", textContent: "Type what you hear" }), hintBtn);
+    setTimeout(() => current?.card === c && !revealed && playAudio(wordAudioUrl(c), play, { quiet: true }), 250);
   }
-  $("#front").replaceChildren(...front.filter((n) => n.textContent || n.childElementCount));
+  front.push(typed
+    ? answerForm(mode === "cloze" ? "Fill in the blank…" : mode === "listen" ? "What did you hear?" : "Type the French…")
+    : el("p", { className: "hint-line reveal-hint", textContent: mode === "fr-en" ? "Tap to reveal" : "Say it, then tap to reveal" }));
+  $("#front").replaceChildren(...front);
 
-  card.classList.toggle("typing", typedMode());
-  revealBtn.hidden = typedMode();
-  if (typedMode()) $("#answer").focus({ preventScroll: true });
+  card.classList.toggle("typing", typed);
+  revealBtn.hidden = typed;
+  if (typed) $("#answer").focus({ preventScroll: true });
   else revealBtn.focus({ preventScroll: true });
 }
 
@@ -487,21 +535,26 @@ function reveal(feedback = null) {
   const c = current.card;
   const back = [];
   if (feedback) back.push(feedback);
-  if (settings.direction === "fr-en") {
+  if (mode === "fr-en") {
     back.push(el("p", { className: "english", textContent: c.translation }));
+  } else if (mode === "cloze") {
+    back.push(el("div", { className: "word-row" }, clozeSentence(c, true), audioButton(sentenceAudioUrl(c.example_sentence), "Play sentence", "small")));
+    back.push(el("p", { className: "card-word" }, el("b", { lang: "fr", textContent: c.word }), ` — ${c.translation}`));
   } else {
     back.push(el("div", { className: "word-row" }, frenchHeading(c), audioButton(wordAudioUrl(c), "Play pronunciation")));
+    if (mode === "listen") back.push(el("p", { className: "english", textContent: c.translation }));
   }
-  if (c.example_sentence) {
+  if (c.example_sentence && mode !== "cloze") {
     back.push(el("div", { className: "example" },
       el("p", { id: "example", lang: "fr", textContent: c.example_sentence }),
-      audioButton(sentenceAudioUrl(c.example_sentence), "Play example sentence", true),
+      audioButton(sentenceAudioUrl(c.example_sentence), "Play example sentence", "small"),
     ));
   }
   $("#back").replaceChildren(...back);
   $("#back").hidden = false;
-  $("#front").querySelector(".hint-line:last-child")?.remove();
-  $("#front").querySelector(".answer-form")?.remove();
+  $("#front .reveal-hint")?.remove();
+  $("#front .answer-form")?.remove();
+  if (mode === "cloze") $("#front").replaceChildren(); // the back repeats the sentence with the answer filled in
   card.classList.add("revealed");
   revealBtn.hidden = true;
   ratings.hidden = false;
@@ -516,8 +569,21 @@ const stripAccents = (s) => s.normalize("NFD").replace(/\p{M}/gu, "").normalize(
 const ARTICLE_RE = /^(?:(un|une|le|la|les)\s+|(l)')/;
 const GENDER_ARTICLES = { m: ["un", "le"], f: ["une", "la"] };
 
-function checkAnswer(input, c) {
-  const expected = normalizeAnswer(c.word);
+// Levenshtein distance, for spotting one-letter slips ("pomme de tere").
+function editDistance(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+function checkAnswer(input, expectedWord, gender = null) {
+  const expected = normalizeAnswer(expectedWord);
   let typed = normalizeAnswer(input);
   let article = null;
   const m = typed.match(ARTICLE_RE);
@@ -525,24 +591,34 @@ function checkAnswer(input, c) {
     article = m[1] ?? "l'";
     typed = typed.slice(m[0].length).trim();
   }
-  const word = typed === expected ? "exact" : stripAccents(typed) === stripAccents(expected) ? "accents" : "wrong";
+  const word = typed === expected ? "exact"
+    : stripAccents(typed) === stripAccents(expected) ? "accents"
+    : editDistance(stripAccents(typed), stripAccents(expected)) === 1 ? "typo"
+    : "wrong";
   // l' and les don't show gender, so only judge un/une/le/la.
-  let gender = null;
-  if (GENDER_ARTICLES[c.gender] && article && !["l'", "les"].includes(article)) {
-    gender = GENDER_ARTICLES[c.gender].includes(article) ? "right" : "wrong";
+  let genderResult = null;
+  if (GENDER_ARTICLES[gender] && article && !["l'", "les"].includes(article)) {
+    genderResult = GENDER_ARTICLES[gender].includes(article) ? "right" : "wrong";
   }
-  return { word, gender, empty: !typed };
+  return { word, gender: genderResult, empty: !typed };
 }
 
 function checkTyped(input) {
   const c = current.card;
-  const result = checkAnswer(input, c);
-  const article = ARTICLES[c.gender];
-  const right = article && c.gender !== "mf" ? `${article} ${c.word}` : c.word;
+  // Fill in: the exact form in the sentence ("vais"), no gender. Otherwise the card's word.
+  const expected = mode === "cloze" ? c.cloze.answer : c.word;
+  const gender = mode === "cloze" ? null : c.gender;
+  const result = checkAnswer(input, expected, gender);
+  const article = ARTICLES[gender];
+  const right = article && gender !== "mf" ? `${article} ${expected}` : expected;
   let cls;
   let text;
   if (result.empty) {
     [cls, text, suggestion] = ["bad", "No answer — here it is:", 0];
+  } else if (mode === "cloze" && result.word !== "exact" && checkAnswer(input, c.word).word === "exact") {
+    [cls, text, suggestion] = ["close", `That's the base form — here it needs “${expected}”. You typed `, 2];
+  } else if (result.word === "typo") {
+    [cls, text, suggestion] = ["close", "One letter off. You typed ", 2];
   } else if (result.word === "wrong") {
     [cls, text, suggestion] = ["bad", "Not quite. You typed ", 1];
   } else if (result.word === "accents") {
@@ -551,7 +627,7 @@ function checkTyped(input) {
     [cls, text, suggestion] = ["close", `Right word, wrong gender: it's ${right}. You typed `, 3];
   } else {
     [cls, text, suggestion] = ["good", result.gender === "right" ? "Correct, gender too!" : "Correct!", 4];
-    if (article && c.gender !== "mf" && result.gender === null) text += ` Remember: ${right}.`;
+    if (article && gender !== "mf" && result.gender === null) text += ` Remember: ${right}.`;
   }
   const feedback = el("p", { className: `feedback ${cls}` }, text);
   if (cls !== "good" && !result.empty) feedback.append(el("span", { className: "typed", lang: "fr", textContent: `“${input.trim()}”` }));
@@ -641,7 +717,8 @@ async function finish() {
 
 // ---- Audio ----
 
-function playAudio(url, btn) {
+// quiet: an automatic play (Listen mode) that the browser may block until the first tap.
+function playAudio(url, btn, { quiet = false } = {}) {
   stopAudio();
   player.src = url;
   btn.classList.add("playing");
@@ -649,7 +726,7 @@ function playAudio(url, btn) {
   player.onended = player.onerror = player.onpause = stop;
   player.play().catch(() => {
     stop();
-    setFlash("Couldn't play audio.", true);
+    if (!quiet) setFlash("Couldn't play audio.", true);
   });
 }
 
@@ -661,7 +738,7 @@ function stopAudio() {
 // ---- Input ----
 
 card.addEventListener("click", (e) => {
-  if (!typedMode() && !e.target.closest("button, input")) reveal();
+  if (!isTyped(mode) && !e.target.closest("button, input")) reveal();
 });
 revealBtn.addEventListener("click", () => reveal());
 ratings.addEventListener("click", (e) => {
@@ -682,7 +759,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "p") {
     card.querySelector(".audio-btn")?.click(); // only present when the French is showing
   } else if (!revealed) {
-    if ((e.key === " " || e.key === "Enter") && !typedMode() && !onControl) {
+    if ((e.key === " " || e.key === "Enter") && !isTyped(mode) && !onControl) {
       e.preventDefault();
       reveal();
     }
