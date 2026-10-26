@@ -1,0 +1,23 @@
+from datetime import datetime
+
+from sqlalchemy import DateTime, Float, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from database import Base, utcnow
+
+
+class Card(Base):
+    __tablename__ = "cards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    word: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    translation: Mapped[str] = mapped_column(String, nullable=False)
+    example_sentence: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # SM-2 state
+    repetitions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    interval: Mapped[int] = mapped_column(Integer, default=1, nullable=False)  # days
+    easiness: Mapped[float] = mapped_column(Float, default=2.5, nullable=False)
+    next_review: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
