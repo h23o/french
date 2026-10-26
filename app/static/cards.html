@@ -145,6 +145,8 @@
   }
   .audio-btn:hover, .audio-btn.playing { border-color: var(--accent); color: var(--accent); }
   .audio-btn svg { width: 15px; height: 15px; }
+  .audio-btn.slow { font-size: 14px; line-height: 1; }
+  .audio-pair { display: inline-flex; align-items: center; gap: 4px; }
 
   .edit-form { display: grid; gap: 10px; width: 100%; }
   .edit-form label { display: grid; gap: 4px; font-size: .8125rem; font-weight: 600; color: var(--muted); }
@@ -303,6 +305,9 @@ function fillView(li, card) {
   audio.innerHTML = SPEAKER_ICON;
   audio.setAttribute("aria-label", `Play ${card.word}`);
   audio.addEventListener("click", () => play(card.audio_url, audio));
+  const slow = el("button", { type: "button", className: "audio-btn slow", title: "Play slowly", textContent: "🐢" });
+  slow.setAttribute("aria-label", `Play ${card.word} slowly`);
+  slow.addEventListener("click", () => play(`${card.audio_url}&speed=slow`, slow));
 
   const due = isDue(card);
   const main = el("div", { className: "item-main" },
@@ -311,7 +316,7 @@ function fillView(li, card) {
         ...(ARTICLES[card.gender] ? [el("span", { className: "article", textContent: `${ARTICLES[card.gender]} ` })] : []),
         card.word,
       ),
-      audio,
+      el("span", { className: "audio-pair" }, audio, slow),
       el("span", {
         className: `badge ${due ? "due" : ""}`,
         textContent: dueLabel(card),

@@ -13,6 +13,8 @@ from edge_tts.exceptions import EdgeTTSException
 AUDIO_DIR = Path(__file__).resolve().parent.parent / "static" / "audio"
 
 VOICES = {"fr": "fr-FR-HenriNeural"}
+# edge-tts speaking rates. "slow" is the voice actually speaking slower, not stretched audio.
+SPEEDS = {"normal": "+0%", "slow": "-40%"}
 
 TTS_ERRORS = (EdgeTTSException, aiohttp.ClientError, TimeoutError)
 
@@ -25,29 +27,30 @@ def normalize_text(text: str) -> str:
     return " ".join(unicodedata.normalize("NFC", text).split())
 
 
-def cache_path(text: str, voice: str) -> Path:
-    """Where the MP3 for this text/voice lives.
+def cache_path(text: str, voice: str, speed: str = "normal") -> Path:
+    """Where the MP3 for this text/voice/speed lives.
 
     Filenames are hashes so arbitrary text (slashes, very long sentences,
     case-insensitive filesystems) can't collide or escape the audio directory.
     """
     digest = hashlib.sha256(normalize_text(text).encode()).hexdigest()[:32]
-    return AUDIO_DIR / voice / f"{digest}.mp3"
+    folder = AUDIO_DIR / voice if speed == "normal" else AUDIO_DIR / voice / speed
+    return folder / f"{digest}.mp3"
 
 
-async def _synthesize(text: str, voice: str) -> AsyncIterator[bytes]:
-    async for message in edge_tts.Communicate(normalize_text(text), voice).stream():
+async def _synthesize(text: str, voice: str, speed: str = "normal") -> AsyncIterator[bytes]:
+    async for message in edge_tts.Communicate(normalize_text(text), voice, rate=SPEEDS[speed]).stream():
         if message["type"] == "audio":
             yield message["data"]
 
 
-async def open_audio_stream(text: str, voice: str, path: Path) -> AsyncIterator[bytes]:
+async def open_audio_stream(text: str, voice: str, path: Path, speed: str = "normal") -> AsyncIterator[bytes]:
     """Start synthesizing and return an iterator of MP3 chunks that also saves them to `path`.
 
     The first chunk is fetched up front so connection failures raise TTSError
     here, while an error response can still be sent, rather than mid-stream.
     """
-    chunks = _synthesize(text, voice)
+    chunks = _synthesize(text, voice, speed)
     try:
         first = await anext(chunks)
     except StopAsyncIteration:

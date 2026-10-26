@@ -151,6 +151,8 @@
   .audio-btn.playing { border-color: var(--accent); color: var(--accent); animation: pulse 1s ease infinite; }
   .audio-btn.small { width: 32px; height: 32px; }
   .audio-btn svg { width: 50%; height: 50%; }
+  .audio-btn.slow { font-size: 15px; line-height: 1; }
+  .audio-pair { display: inline-flex; align-items: center; gap: 6px; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); } }
 
   /* Full width, so a typed-answer box can't push the card wider than the screen. */
@@ -343,7 +345,7 @@ function syncSettingsUI() {
   $("#opt-repeat").checked = settings.repeat;
   $("#keys").innerHTML = isTyped(settings.direction)
     ? "<kbd>Enter</kbd> check, then <kbd>Enter</kbd> accept the suggested rating · <kbd>0</kbd>–<kbd>5</kbd> rate"
-    : "<kbd>Space</kbd> reveal · <kbd>0</kbd>–<kbd>5</kbd> rate · <kbd>P</kbd> play";
+    : "<kbd>Space</kbd> reveal · <kbd>0</kbd>–<kbd>5</kbd> rate · <kbd>P</kbd> play · <kbd>S</kbd> slowly";
 }
 
 document.querySelectorAll("[data-direction]").forEach((btn) =>
@@ -460,6 +462,15 @@ function audioButton(text, label, size = "") {
   return btn;
 }
 
+// 🔊 plus a 🐢 that plays the same audio spoken slowly.
+function withSlow(normal, url, label) {
+  const slow = audioButton(`${url}&speed=slow`, `${label} slowly`, "small slow");
+  slow.textContent = "🐢";
+  slow.title = "Play slowly";
+  return el("span", { className: "audio-pair" }, normal, slow);
+}
+const audioPair = (url, label, size = "") => withSlow(audioButton(url, label, size), url, label);
+
 const wordAudioUrl = (c) => c.audio_url; // includes the article for nouns
 const sentenceAudioUrl = (text) => `/api/tts/fr?text=${encodeURIComponent(text)}`;
 
@@ -500,7 +511,7 @@ function showCard() {
 
   const front = [];
   if (mode === "fr-en") {
-    front.push(el("div", { className: "word-row" }, frenchHeading(c), audioButton(wordAudioUrl(c), "Play pronunciation")));
+    front.push(el("div", { className: "word-row" }, frenchHeading(c), audioPair(wordAudioUrl(c), "Play pronunciation")));
   } else if (mode === "en-fr") {
     front.push(el("p", { className: "english", textContent: c.translation }));
     const hint = c.gender ? "noun — include un / une" : c.word.includes(" ") ? "phrase" : "";
@@ -515,7 +526,7 @@ function showCard() {
       e.stopPropagation();
       hintBtn.replaceWith(el("p", { className: "hint-line", textContent: c.translation }));
     });
-    front.push(play, el("p", { className: "hint-line", textContent: "Type what you hear" }), hintBtn);
+    front.push(withSlow(play, wordAudioUrl(c), "Play again"), el("p", { className: "hint-line", textContent: "Type what you hear" }), hintBtn);
     setTimeout(() => current?.card === c && !revealed && playAudio(wordAudioUrl(c), play, { quiet: true }), 250);
   }
   front.push(typed
@@ -538,16 +549,16 @@ function reveal(feedback = null) {
   if (mode === "fr-en") {
     back.push(el("p", { className: "english", textContent: c.translation }));
   } else if (mode === "cloze") {
-    back.push(el("div", { className: "word-row" }, clozeSentence(c, true), audioButton(sentenceAudioUrl(c.example_sentence), "Play sentence", "small")));
+    back.push(el("div", { className: "word-row" }, clozeSentence(c, true), audioPair(sentenceAudioUrl(c.example_sentence), "Play sentence", "small")));
     back.push(el("p", { className: "card-word" }, el("b", { lang: "fr", textContent: c.word }), ` — ${c.translation}`));
   } else {
-    back.push(el("div", { className: "word-row" }, frenchHeading(c), audioButton(wordAudioUrl(c), "Play pronunciation")));
+    back.push(el("div", { className: "word-row" }, frenchHeading(c), audioPair(wordAudioUrl(c), "Play pronunciation")));
     if (mode === "listen") back.push(el("p", { className: "english", textContent: c.translation }));
   }
   if (c.example_sentence && mode !== "cloze") {
     back.push(el("div", { className: "example" },
       el("p", { id: "example", lang: "fr", textContent: c.example_sentence }),
-      audioButton(sentenceAudioUrl(c.example_sentence), "Play example sentence", "small"),
+      audioPair(sentenceAudioUrl(c.example_sentence), "Play example sentence", "small"),
     ));
   }
   $("#back").replaceChildren(...back);
@@ -756,8 +767,9 @@ document.addEventListener("keydown", (e) => {
   if (target.matches("input:not([type=checkbox]), textarea")) return; // typing an answer
   // Space/Enter on a focused button or checkbox should do that control's own thing.
   const onControl = target.matches("button, input");
-  if (e.key.toLowerCase() === "p") {
-    card.querySelector(".audio-btn")?.click(); // only present when the French is showing
+  if (e.key.toLowerCase() === "p" || e.key.toLowerCase() === "s") {
+    // Only present when the French is showing. S = slowly.
+    card.querySelector(e.key.toLowerCase() === "s" ? ".audio-btn.slow" : ".audio-btn:not(.slow)")?.click();
   } else if (!revealed) {
     if ((e.key === " " || e.key === "Enter") && !isTyped(mode) && !onControl) {
       e.preventDefault();

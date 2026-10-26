@@ -140,6 +140,8 @@
   }
   .audio-btn:hover, .audio-btn.playing { border-color: var(--accent); color: var(--accent); }
   .audio-btn svg { width: 15px; height: 15px; }
+  .audio-btn.slow { font-size: 14px; line-height: 1; }
+  .audio-pair { display: inline-flex; align-items: center; gap: 4px; }
 
   /* ---- Texts ---- */
   .tab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -294,20 +296,25 @@ function statusBadge(item) {
   return el("span", { className: `badge ${item.is_due ? "due" : "known"}`, textContent: item.is_due ? "Due" : "In cards" });
 }
 
-function audioButton(spoken) {
-  const btn = el("button", { type: "button", className: "audio-btn", title: "Play" });
-  btn.innerHTML = SPEAKER_ICON;
-  btn.setAttribute("aria-label", `Play ${spoken}`);
-  btn.addEventListener("click", () => {
-    player.pause();
-    document.querySelectorAll(".audio-btn.playing").forEach((b) => b.classList.remove("playing"));
-    player.src = `/api/tts/fr?text=${encodeURIComponent(spoken)}`;
-    btn.classList.add("playing");
-    const done = () => btn.classList.remove("playing");
-    player.onended = player.onerror = player.onpause = done;
-    player.play().catch(done);
-  });
-  return btn;
+// 🔊 plus a 🐢 that plays the same text spoken slowly.
+function audioButtons(spoken) {
+  const button = (speed) => {
+    const btn = el("button", { type: "button", className: `audio-btn ${speed}`, title: speed === "slow" ? "Play slowly" : "Play" });
+    if (speed === "slow") btn.textContent = "🐢";
+    else btn.innerHTML = SPEAKER_ICON;
+    btn.setAttribute("aria-label", `Play ${spoken}${speed === "slow" ? " slowly" : ""}`);
+    btn.addEventListener("click", () => {
+      player.pause();
+      document.querySelectorAll(".audio-btn.playing").forEach((b) => b.classList.remove("playing"));
+      player.src = `/api/tts/fr?text=${encodeURIComponent(spoken)}${speed === "slow" ? "&speed=slow" : ""}`;
+      btn.classList.add("playing");
+      const done = () => btn.classList.remove("playing");
+      player.onended = player.onerror = player.onpause = done;
+      player.play().catch(done);
+    });
+    return btn;
+  };
+  return el("span", { className: "audio-pair" }, button("normal"), button("slow"));
 }
 
 async function refreshDueCount() {
@@ -475,7 +482,7 @@ function wordRow(item) {
     const badge = statusBadge(item);
     const add = el("button", { type: "button", className: "btn", textContent: "+ Add" });
     add.addEventListener("click", () => openAddForm(item, li, fill));
-    side.replaceChildren(badge ?? add, audioButton(spokenForm(item.word, item.gender)));
+    side.replaceChildren(badge ?? add, audioButtons(spokenForm(item.word, item.gender)));
   };
   fill();
   li.append(
@@ -617,7 +624,7 @@ function phraseRow(p, onSaved) {
         showError("#phrases-status", `Couldn't add “${p.text}”: ${err.message}`);
       }
     });
-    side.replaceChildren(statusBadge(p) ?? add, audioButton(p.text));
+    side.replaceChildren(statusBadge(p) ?? add, audioButtons(p.text));
   };
   fill();
   return el("li", { className: "row" },

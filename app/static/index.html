@@ -291,6 +291,7 @@
   }
   .audio-btn:hover, .audio-btn.playing { border-color: var(--accent); color: var(--accent); }
   .audio-btn svg { width: 16px; height: 16px; }
+  .audio-btn.slow { font-size: 15px; line-height: 1; }
   .back-btn {
     font: inherit;
     font-size: .875rem;
@@ -385,6 +386,7 @@
         <button id="panel-audio" class="audio-btn" type="button" aria-label="Play pronunciation">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
         </button>
+        <button id="panel-audio-slow" class="audio-btn slow" type="button" aria-label="Play slowly" title="Play slowly">🐢</button>
       </div>
       <span id="panel-badge" class="badge"></span>
     </div>
@@ -784,20 +786,21 @@ function closePanel() {
 
 // ---- Audio ----
 
-$("#panel-audio").addEventListener("click", () => {
+function playPanelAudio(btn, speed) {
   if (!view) return;
-  const btn = $("#panel-audio");
   stopAudio();
-  player.src = `/api/tts/fr?text=${encodeURIComponent(view.spoken)}`;
+  player.src = `/api/tts/fr?text=${encodeURIComponent(view.spoken)}${speed === "slow" ? "&speed=slow" : ""}`;
   btn.classList.add("playing");
   const done = () => btn.classList.remove("playing");
   player.onended = player.onerror = player.onpause = done;
   player.play().catch(done);
-});
+}
+$("#panel-audio").addEventListener("click", (e) => playPanelAudio(e.currentTarget));
+$("#panel-audio-slow").addEventListener("click", (e) => playPanelAudio(e.currentTarget, "slow"));
 
 function stopAudio() {
   player.pause();
-  $("#panel-audio").classList.remove("playing");
+  document.querySelectorAll("#panel .audio-btn.playing").forEach((b) => b.classList.remove("playing"));
 }
 
 $("#panel-close").addEventListener("click", closePanel);

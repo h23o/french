@@ -224,19 +224,23 @@ AUDIO_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
 # Path parameters can't be optional, so /api/tts (no lang) is the "defaults to fr" form.
 @app.get("/api/tts", response_class=StreamingResponse, responses={200: {"content": {"audio/mpeg": {}}}})
 @app.get("/api/tts/{lang}", response_class=StreamingResponse, responses={200: {"content": {"audio/mpeg": {}}}})
-async def text_to_speech(text: str = Query(min_length=1, max_length=500), lang: str = "fr"):
+async def text_to_speech(
+    text: str = Query(min_length=1, max_length=500),
+    lang: str = "fr",
+    speed: Literal["normal", "slow"] = "normal",
+):
     voice = tts_cache.VOICES.get(lang)
     if voice is None:
         raise HTTPException(status_code=404, detail=f"Unsupported language '{lang}'")
     if not tts_cache.normalize_text(text):
         raise HTTPException(status_code=422, detail="text must not be blank")
 
-    path = tts_cache.cache_path(text, voice)
+    path = tts_cache.cache_path(text, voice, speed)
     if path.exists():
         return FileResponse(path, media_type="audio/mpeg", headers=AUDIO_HEADERS)
 
     try:
-        stream = await tts_cache.open_audio_stream(text, voice, path)
+        stream = await tts_cache.open_audio_stream(text, voice, path, speed)
     except tts_cache.TTSError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return StreamingResponse(stream, media_type="audio/mpeg", headers=AUDIO_HEADERS)
