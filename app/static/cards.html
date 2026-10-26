@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Cards</title>
+<style>
+  :root {
+    --bg: #f6f6f3;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6a6a70;
+    --border: #dcdcd6;
+    --hover: #ecece6;
+    --accent: #2457d6;
+    --accent-text: #ffffff;
+    --danger: #b42318;
+    --danger-text: #ffffff;
+    --due-bg: #ffd49e;
+    --due-text: #5e2f00;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416;
+      --surface: #1e1e21;
+      --text: #ececef;
+      --muted: #a2a2aa;
+      --border: #35353b;
+      --hover: #2a2a2f;
+      --accent: #7ea4ff;
+      --accent-text: #0d1a33;
+      --danger: #ff8a80;
+      --danger-text: #2b0805;
+      --due-bg: #5a3311;
+      --due-text: #ffdcb3;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
+
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .top .back { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .top .back:hover { text-decoration: underline; }
+  h1 { font-size: 1.25rem; margin: 0; }
+  .pill {
+    font-weight: 600;
+    font-size: .9375rem;
+    text-decoration: none;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .pill:hover { border-color: var(--accent); }
+  .pill.has-due { background: var(--due-bg); border-color: var(--due-bg); color: var(--due-text); }
+
+  input, textarea, select {
+    font: inherit;
+    font-size: 16px; /* avoids iOS zoom on focus */
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .toolbar { display: grid; gap: 10px; margin-bottom: 16px; }
+  #search { width: 100%; }
+  .toolbar-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .segmented button {
+    font: inherit;
+    font-size: .875rem;
+    border: 0;
+    padding: 7px 14px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .segmented button + button { border-left: 1px solid var(--border); }
+  .segmented button[aria-pressed="true"] { background: var(--hover); color: var(--text); font-weight: 600; }
+  #sort { font-size: .875rem; padding: 7px 10px; }
+
+  #list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .item.removing { opacity: 0; transform: translateX(-12px); }
+  .item-main { flex: 1; min-width: 0; }
+  .item-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .word { font: 600 1.3rem/1.3 Georgia, "Iowan Old Style", serif; overflow-wrap: anywhere; }
+  .translation { margin-top: 2px; overflow-wrap: anywhere; }
+  .example { margin-top: 4px; color: var(--muted); font: italic .975rem/1.45 Georgia, serif; overflow-wrap: anywhere; }
+  .meta { margin-top: 6px; color: var(--muted); font-size: .8125rem; }
+  .badge { font-size: .75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--hover); color: var(--muted); white-space: nowrap; }
+  .badge.due { background: var(--due-bg); color: var(--due-text); }
+
+  .item-actions { display: flex; gap: 6px; flex: none; }
+  .btn {
+    font: inherit;
+    font-size: .875rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .btn.confirm { background: var(--danger); border-color: var(--danger); color: var(--danger-text); }
+  .btn:disabled { opacity: .6; cursor: progress; }
+  .btn:focus-visible, .audio-btn:focus-visible, .segmented button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .audio-btn {
+    width: 30px; height: 30px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .audio-btn:hover, .audio-btn.playing { border-color: var(--accent); color: var(--accent); }
+  .audio-btn svg { width: 15px; height: 15px; }
+
+  .edit-form { display: grid; gap: 10px; width: 100%; }
+  .edit-form label { display: grid; gap: 4px; font-size: .8125rem; font-weight: 600; color: var(--muted); }
+  .edit-form input, .edit-form textarea { width: 100%; font-weight: 400; }
+  .edit-form textarea { min-height: 64px; resize: vertical; }
+  .edit-form .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .error { color: var(--danger); font-size: .875rem; margin: 0; }
+
+  .empty { text-align: center; color: var(--muted); padding: 48px 16px; background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; }
+  .empty a { color: var(--accent); }
+
+  @media (max-width: 520px) {
+    .item { flex-direction: column; gap: 10px; }
+    .item-actions { align-self: flex-end; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .item { transition: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <a class="back" href="/">← Reader</a>
+    <h1>My cards</h1>
+    <a id="review-link" class="pill" href="/review">Review</a>
+  </header>
+
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="Search words, translations, examples…" aria-label="Search cards" autocomplete="off">
+    <div class="toolbar-row">
+      <div class="segmented" role="group" aria-label="Filter">
+        <button type="button" data-filter="all" aria-pressed="true">All <span id="count-all"></span></button>
+        <button type="button" data-filter="due" aria-pressed="false">Due <span id="count-due"></span></button>
+      </div>
+      <select id="sort" aria-label="Sort">
+        <option value="newest">Newest first</option>
+        <option value="due">Due soonest</option>
+        <option value="alpha">A–Z</option>
+      </select>
+    </div>
+  </div>
+
+  <p id="status" class="error" hidden></p>
+  <ul id="list" aria-live="polite"></ul>
+  <div id="empty" class="empty" hidden></div>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const list = $("#list");
+const player = new Audio();
+const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const shortDate = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+const SPEAKER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+
+let cards = [];
+const rows = new Map(); // card id -> <li>, kept so an open edit form survives re-sorting
+let filter = "all";
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+async function api(path, options = {}) {
+  const resp = await fetch(path, {
+    ...options,
+    headers: options.body ? { "Content-Type": "application/json" } : undefined,
+  });
+  const body = resp.status === 204 ? null : await resp.json().catch(() => null);
+  if (!resp.ok) {
+    const detail = typeof body?.detail === "string" ? body.detail
+      : Array.isArray(body?.detail) ? body.detail.map((d) => `${d.loc.at(-1)}: ${d.msg}`).join("; ")
+      : `Request failed (${resp.status})`;
+    throw Object.assign(new Error(detail), { status: resp.status });
+  }
+  return body;
+}
+
+// Accent- and case-insensitive, so "ecole" finds "école".
+const fold = (s) => (s ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const isDue = (card) => new Date(card.next_review) <= Date.now();
+
+function dueLabel(card) {
+  const ms = new Date(card.next_review) - Date.now();
+  if (ms <= 0) return "Due now";
+  const hours = ms / 3_600_000;
+  // Reviews schedule whole days from "now", so a 1-day card is just under 24h away: call that "tomorrow".
+  return hours < 23
+    ? `Due ${relative.format(Math.ceil(hours), "hour")}`
+    : `Due ${relative.format(Math.round(hours / 24), "day")}`;
+}
+
+// ---- Loading & rendering ----
+
+async function load() {
+  try {
+    cards = await api("/cards/");
+  } catch (err) {
+    showStatus(`Couldn't load cards: ${err.message}`);
+    return;
+  }
+  rows.clear();
+  render();
+}
+
+function showStatus(message) {
+  const status = $("#status");
+  status.textContent = message;
+  status.hidden = !message;
+}
+
+function render() {
+  const query = fold($("#search").value.trim());
+  const sort = $("#sort").value;
+  const dueCount = cards.filter(isDue).length;
+
+  $("#count-all").textContent = cards.length;
+  $("#count-due").textContent = dueCount;
+  const link = $("#review-link");
+  link.textContent = dueCount ? `Review · ${dueCount} due` : "Review";
+  link.classList.toggle("has-due", dueCount > 0);
+
+  const visible = cards
+    .filter((c) => filter === "all" || isDue(c))
+    .filter((c) => !query || [c.word, c.translation, c.example_sentence].some((f) => fold(f).includes(query)));
+  if (sort === "due") visible.sort((a, b) => new Date(a.next_review) - new Date(b.next_review));
+  else if (sort === "alpha") visible.sort((a, b) => a.word.localeCompare(b.word, "fr", { sensitivity: "base" }));
+  else visible.sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.id - a.id);
+
+  list.replaceChildren(...visible.map((c) => rows.get(c.id) ?? buildRow(c)));
+
+  const empty = $("#empty");
+  empty.hidden = visible.length > 0;
+  if (!cards.length) {
+    empty.replaceChildren("No cards yet. ", el("a", { href: "/", textContent: "Open the reader" }), " and save some words.");
+  } else if (!visible.length) {
+    empty.textContent = query ? "No cards match your search." : "Nothing is due right now.";
+  }
+}
+
+function buildRow(card) {
+  const li = el("li", { className: "item" });
+  li.dataset.id = card.id;
+  fillView(li, card);
+  rows.set(card.id, li);
+  return li;
+}
+
+function fillView(li, card) {
+  const audio = el("button", { type: "button", className: "audio-btn", title: "Play pronunciation" });
+  audio.innerHTML = SPEAKER_ICON;
+  audio.setAttribute("aria-label", `Play ${card.word}`);
+  audio.addEventListener("click", () => play(card.audio_url, audio));
+
+  const due = isDue(card);
+  const main = el("div", { className: "item-main" },
+    el("div", { className: "item-head" },
+      el("span", { className: "word", lang: "fr", textContent: card.word }),
+      audio,
+      el("span", {
+        className: `badge ${due ? "due" : ""}`,
+        textContent: dueLabel(card),
+        title: fullDate.format(new Date(card.next_review)),
+      }),
+    ),
+    el("div", { className: "translation", textContent: card.translation }),
+  );
+  if (card.example_sentence) {
+    main.append(el("div", { className: "example", lang: "fr", textContent: card.example_sentence }));
+  }
+  main.append(el("div", {
+    className: "meta",
+    textContent: `Added ${shortDate.format(new Date(card.created_at))} · ` +
+      `${card.repetitions} correct in a row · ease ${card.easiness.toFixed(2)}`,
+  }));
+
+  const edit = el("button", { type: "button", className: "btn", textContent: "Edit" });
+  edit.addEventListener("click", () => fillEdit(li, card));
+  const del = el("button", { type: "button", className: "btn", textContent: "Delete" });
+  del.addEventListener("click", () => deleteCard(li, card, del));
+
+  li.replaceChildren(main, el("div", { className: "item-actions" }, edit, del));
+}
+
+function fillEdit(li, card) {
+  const word = el("input", { value: card.word, required: true, autocomplete: "off", lang: "fr" });
+  const translation = el("input", { value: card.translation, required: true, autocomplete: "off" });
+  const example = el("textarea", { value: card.example_sentence ?? "", lang: "fr" });
+  const save = el("button", { type: "submit", className: "btn primary", textContent: "Save" });
+  const cancel = el("button", { type: "button", className: "btn", textContent: "Cancel" });
+  const error = el("p", { className: "error", hidden: true });
+
+  const form = el("form", { className: "edit-form" },
+    el("label", {}, "Word", word),
+    el("label", {}, "Translation", translation),
+    el("label", {}, "Example sentence", example),
+    el("div", { className: "row" }, save, cancel, error),
+  );
+  cancel.addEventListener("click", () => fillView(li, card));
+  form.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") fillView(li, card);
+  });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    save.disabled = true;
+    error.hidden = true;
+    try {
+      const updated = await api(`/cards/${card.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          word: word.value,
+          translation: translation.value,
+          example_sentence: example.value.trim() || null,
+        }),
+      });
+      cards[cards.findIndex((c) => c.id === card.id)] = updated;
+      fillView(li, updated);
+      render();
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+      save.disabled = false;
+    }
+  });
+
+  li.replaceChildren(form);
+  word.focus();
+}
+
+async function deleteCard(li, card, btn) {
+  // First click arms the button; a second click within 3s deletes.
+  if (!btn.classList.contains("confirm")) {
+    btn.classList.add("confirm");
+    btn.textContent = "Confirm";
+    setTimeout(() => {
+      btn.classList.remove("confirm");
+      btn.textContent = "Delete";
+    }, 3000);
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await api(`/cards/${card.id}`, { method: "DELETE" });
+  } catch (err) {
+    if (err.status !== 404) {
+      showStatus(`Couldn't delete “${card.word}”: ${err.message}`);
+      btn.disabled = false;
+      return;
+    }
+  }
+  showStatus("");
+  li.classList.add("removing");
+  setTimeout(() => {
+    cards = cards.filter((c) => c.id !== card.id);
+    rows.delete(card.id);
+    render();
+  }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 180);
+}
+
+function play(url, btn) {
+  player.pause();
+  document.querySelectorAll(".audio-btn.playing").forEach((b) => b.classList.remove("playing"));
+  player.src = url;
+  btn.classList.add("playing");
+  const done = () => btn.classList.remove("playing");
+  player.onended = player.onerror = player.onpause = done;
+  player.play().catch(done);
+}
+
+// ---- Controls ----
+
+$("#search").addEventListener("input", render);
+$("#sort").addEventListener("change", render);
+document.querySelectorAll("[data-filter]").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    filter = btn.dataset.filter;
+    document.querySelectorAll("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", b === btn));
+    render();
+  }),
+);
+
+load();
+</script>
+</body>
+</html>

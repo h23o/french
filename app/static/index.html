@@ -50,7 +50,22 @@
   }
   .layout { padding: 24px 16px 48px; transition: padding-right .2s ease; }
   main { max-width: 760px; margin: 0 auto; }
-  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .nav { display: flex; gap: 8px; }
+  .review-link {
+    flex: none;
+    font-weight: 600;
+    font-size: .9375rem;
+    text-decoration: none;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .review-link:hover { border-color: var(--accent); }
+  .review-link.has-due { background: var(--due-bg); border-color: var(--due-bg); color: var(--due-text); }
   .subtitle { color: var(--muted); margin: 0 0 20px; }
 
   .card {
@@ -202,6 +217,7 @@
   #save-form { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 16px; display: grid; gap: 10px; }
   #save-form[hidden] { display: none; }
   #save-form label { display: grid; gap: 4px; font-size: .875rem; font-weight: 600; }
+  #save-form input, #save-form textarea { font-weight: 400; } /* don't inherit the bold label */
   #save-form textarea { min-height: 64px; resize: vertical; }
   #saved-note { border-top: 1px solid var(--border); margin: 20px 0 0; padding-top: 16px; }
 </style>
@@ -209,7 +225,13 @@
 <body>
 <div class="layout">
   <main>
-    <h1>French Reader</h1>
+    <header class="top">
+      <h1>French Reader</h1>
+      <nav class="nav">
+        <a class="review-link" href="/my-cards">My cards</a>
+        <a id="review-link" class="review-link" href="/review">Review</a>
+      </nav>
+    </header>
     <p class="subtitle">Paste French text, then tap any word to look it up or save it.</p>
 
     <form id="reader-form" class="card">
@@ -290,6 +312,18 @@ async function api(path, options = {}) {
 function tokenState(tok) {
   return tok.is_due ? "due" : tok.in_database ? "known" : "";
 }
+
+async function refreshDueCount() {
+  const link = $("#review-link");
+  try {
+    const due = (await api("/cards/due")).length;
+    link.textContent = due ? `Review · ${due} due` : "Review";
+    link.classList.toggle("has-due", due > 0);
+  } catch {
+    link.textContent = "Review";
+  }
+}
+refreshDueCount();
 
 // ---- Reading ----
 
@@ -493,6 +527,7 @@ saveForm.addEventListener("submit", async (e) => {
       }),
     });
     await loadTokens(currentText); // refresh highlights for every occurrence
+    refreshDueCount();
     if (activeIndex === index) {
       saveForm.hidden = true;
       updatePanelStatus(tokens[index]);

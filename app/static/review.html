@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review</title>
+<style>
+  :root {
+    --bg: #f6f6f3;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6a6a70;
+    --border: #dcdcd6;
+    --hover: #ecece6;
+    --accent: #2457d6;
+    --accent-text: #ffffff;
+    --danger: #b42318;
+    --fail-bg: #fde3e0;
+    --fail-text: #8a1c12;
+    --hard-bg: #ffe8c2;
+    --hard-text: #6b3d00;
+    --good-bg: #dcf2e1;
+    --good-text: #1a5c2b;
+    --shadow: 0 6px 24px rgba(0, 0, 0, .08);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416;
+      --surface: #1e1e21;
+      --text: #ececef;
+      --muted: #a2a2aa;
+      --border: #35353b;
+      --hover: #2a2a2f;
+      --accent: #7ea4ff;
+      --accent-text: #0d1a33;
+      --danger: #ff8a80;
+      --fail-bg: #4a1f1b;
+      --fail-text: #ffc9c2;
+      --hard-bg: #4a3415;
+      --hard-text: #ffdcaa;
+      --good-bg: #183d24;
+      --good-text: #bdeccb;
+      --shadow: 0 6px 24px rgba(0, 0, 0, .4);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; } /* beat .btn / grid display rules */
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 16px 32px; }
+
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .top a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .top a:hover { text-decoration: underline; }
+  h1 { font-size: 1.25rem; margin: 0; }
+  #remaining { color: var(--muted); font-size: .875rem; min-width: 4em; text-align: right; }
+  .progress { height: 4px; background: var(--border); border-radius: 2px; margin: 12px 0 20px; overflow: hidden; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+
+  .btn {
+    font: inherit;
+    font-weight: 600;
+    border: 0;
+    border-radius: 10px;
+    padding: 12px 20px;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn.secondary { background: var(--hover); color: var(--text); }
+  .btn:disabled { opacity: .6; cursor: progress; }
+
+  /* Card */
+  .flashcard {
+    position: relative;
+    min-height: min(46vh, 380px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px 20px;
+    text-align: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    user-select: none;
+  }
+  .flashcard.revealed { cursor: default; user-select: text; }
+  .flashcard.entering { animation: card-in .22s ease; }
+  .flashcard.leaving { animation: card-out .18s ease forwards; }
+  @keyframes card-in { from { opacity: 0; transform: translateX(24px); } }
+  @keyframes card-out { to { opacity: 0; transform: translateX(-24px); } }
+
+  .word-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  #word { font: 600 clamp(2rem, 9vw, 3rem)/1.15 Georgia, "Iowan Old Style", serif; margin: 0; overflow-wrap: anywhere; }
+
+  .audio-btn {
+    width: 44px; height: 44px;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .audio-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .audio-btn.playing { border-color: var(--accent); color: var(--accent); animation: pulse 1s ease infinite; }
+  .audio-btn.small { width: 32px; height: 32px; }
+  .audio-btn svg { width: 50%; height: 50%; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); } }
+
+  .tap-hint { color: var(--muted); font-size: .875rem; margin: 8px 0 0; }
+  .back { width: 100%; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 4px; animation: reveal .2s ease; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(-6px); } }
+  #translation { font-size: 1.375rem; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+  .example { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
+  #example { font: italic 1.0625rem/1.5 Georgia, serif; color: var(--muted); margin: 0; }
+
+  /* Actions */
+  .actions { margin-top: 16px; min-height: 132px; }
+  #reveal { width: 100%; padding: 16px; font-size: 1.0625rem; }
+  .ratings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  @media (min-width: 560px) { .ratings { grid-template-columns: repeat(6, 1fr); } }
+  .rate {
+    font: inherit;
+    display: grid;
+    gap: 2px;
+    padding: 10px 4px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .rate b { font-size: 1.25rem; line-height: 1.2; }
+  .rate span { font-size: .75rem; }
+  .rate.fail { background: var(--fail-bg); color: var(--fail-text); }
+  .rate.hard { background: var(--hard-bg); color: var(--hard-text); }
+  .rate.good { background: var(--good-bg); color: var(--good-text); }
+  .rate:hover { border-color: currentColor; }
+  .rate:disabled { opacity: .6; cursor: progress; }
+  .rate:focus-visible, .btn:focus-visible, .audio-btn:focus-visible, .flashcard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #flash { min-height: 1.5em; margin: 12px 0 0; text-align: center; color: var(--muted); font-size: .875rem; }
+  #flash.error { color: var(--danger); }
+  .keys { display: none; text-align: center; color: var(--muted); font-size: .75rem; margin-top: 4px; }
+  @media (hover: hover) and (pointer: fine) { .keys { display: block; } }
+  kbd { font: inherit; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+
+  /* Done / empty / loading */
+  .panel { text-align: center; padding: 48px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+  .panel h2 { font-size: 1.5rem; margin: 0 0 8px; }
+  .panel p { color: var(--muted); margin: 0 0 24px; }
+  .done-icon { font-size: 2.5rem; margin-bottom: 8px; }
+  .panel .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <a href="/">← Reader</a>
+    <h1>Review</h1>
+    <span id="remaining"></span>
+  </header>
+  <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+
+  <section id="loading" class="panel"><p>Loading cards…</p></section>
+
+  <section id="session" hidden>
+    <article id="card" class="flashcard" tabindex="0" aria-label="Flashcard, tap to reveal">
+      <div class="word-row">
+        <h2 id="word" lang="fr"></h2>
+        <button id="play-word" class="audio-btn" type="button" aria-label="Play pronunciation"></button>
+      </div>
+      <p id="tap-hint" class="tap-hint">Tap to reveal</p>
+      <div id="back" class="back" hidden>
+        <p id="translation"></p>
+        <div id="example-row" class="example">
+          <p id="example" lang="fr"></p>
+          <button id="play-example" class="audio-btn small" type="button" aria-label="Play example sentence"></button>
+        </div>
+      </div>
+    </article>
+
+    <div class="actions">
+      <button id="reveal" class="btn" type="button">Show answer</button>
+      <div id="ratings" class="ratings" role="group" aria-label="How well did you remember?" hidden>
+        <button class="rate fail" data-q="0" type="button" title="Complete blackout"><b>0</b><span>Blackout</span></button>
+        <button class="rate fail" data-q="1" type="button" title="Incorrect, but remembered once seen"><b>1</b><span>Wrong</span></button>
+        <button class="rate fail" data-q="2" type="button" title="Incorrect, but easy to remember"><b>2</b><span>Almost</span></button>
+        <button class="rate hard" data-q="3" type="button" title="Correct with serious difficulty"><b>3</b><span>Hard</span></button>
+        <button class="rate good" data-q="4" type="button" title="Correct after hesitation"><b>4</b><span>Good</span></button>
+        <button class="rate good" data-q="5" type="button" title="Perfect recall"><b>5</b><span>Easy</span></button>
+      </div>
+    </div>
+    <p id="flash" aria-live="polite"></p>
+    <p class="keys"><kbd>Space</kbd> reveal · <kbd>0</kbd>–<kbd>5</kbd> rate · <kbd>P</kbd> play</p>
+  </section>
+
+  <section id="done" class="panel" hidden>
+    <div id="done-icon" class="done-icon" aria-hidden="true"></div>
+    <h2 id="done-title"></h2>
+    <p id="done-summary"></p>
+    <div class="row">
+      <a class="btn" href="/">Back to reader</a>
+      <a class="btn secondary" href="/my-cards">My cards</a>
+      <button id="check-again" class="btn secondary" type="button">Check again</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const card = $("#card");
+const ratings = $("#ratings");
+const revealBtn = $("#reveal");
+const flash = $("#flash");
+const player = new Audio();
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const SPEAKER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+$("#play-word").innerHTML = SPEAKER_ICON;
+$("#play-example").innerHTML = SPEAKER_ICON;
+
+let queue = [];
+let current = null;
+let revealed = false;
+let busy = false;
+let total = 0;
+let reviewed = 0;
+let lapses = 0;
+
+async function api(path, options = {}) {
+  const resp = await fetch(path, {
+    ...options,
+    headers: options.body ? { "Content-Type": "application/json" } : undefined,
+  });
+  const body = await resp.json().catch(() => null);
+  if (!resp.ok) {
+    const detail = typeof body?.detail === "string" ? body.detail : `Request failed (${resp.status})`;
+    throw Object.assign(new Error(detail), { status: resp.status });
+  }
+  return body;
+}
+
+function show(id) {
+  for (const section of ["loading", "session", "done"]) $(`#${section}`).hidden = section !== id;
+}
+
+function setFlash(message, isError = false) {
+  flash.textContent = message;
+  flash.className = isError ? "error" : "";
+}
+
+function updateProgress() {
+  const left = queue.length;
+  $("#remaining").textContent = left ? `${left} left` : "";
+  $("#progress-bar").style.width = total ? `${(reviewed / total) * 100}%` : "0";
+}
+
+async function start() {
+  show("loading");
+  setFlash("");
+  try {
+    queue = await api("/cards/due");
+  } catch (err) {
+    $("#loading").querySelector("p").textContent = `Couldn't load cards: ${err.message}`;
+    return;
+  }
+  total = reviewed + queue.length;
+  showNext();
+}
+
+function showNext() {
+  stopAudio();
+  updateProgress();
+  if (!queue.length) return finish();
+
+  current = queue[0];
+  revealed = false;
+  $("#word").textContent = current.word;
+  $("#translation").textContent = current.translation;
+  $("#example").textContent = current.example_sentence ?? "";
+  $("#example-row").hidden = !current.example_sentence;
+  $("#back").hidden = true;
+  $("#tap-hint").hidden = false;
+  card.classList.remove("revealed", "leaving");
+  card.setAttribute("aria-label", "Flashcard, tap to reveal");
+  ratings.hidden = true;
+  revealBtn.hidden = false;
+  show("session");
+
+  card.classList.remove("entering");
+  void card.offsetWidth; // restart the animation
+  card.classList.add("entering");
+  revealBtn.focus({ preventScroll: true });
+}
+
+function reveal() {
+  if (!current || revealed) return;
+  revealed = true;
+  $("#back").hidden = false;
+  $("#tap-hint").hidden = true;
+  card.classList.add("revealed");
+  card.setAttribute("aria-label", "Flashcard");
+  revealBtn.hidden = true;
+  ratings.hidden = false;
+}
+
+async function rate(quality) {
+  if (!revealed || busy) return;
+  busy = true;
+  ratings.querySelectorAll("button").forEach((b) => (b.disabled = true));
+  try {
+    const updated = await api(`/cards/${current.id}/review`, {
+      method: "POST",
+      body: JSON.stringify({ quality }),
+    });
+    reviewed++;
+    if (quality < 3) lapses++;
+    queue.shift();
+    const days = updated.interval === 1 ? "tomorrow" : `in ${updated.interval} days`;
+    setFlash(`“${updated.word}” comes back ${days}.`);
+    await leave();
+  } catch (err) {
+    if (err.status === 404) {
+      // Deleted elsewhere: drop it and move on.
+      queue.shift();
+      total--;
+      setFlash("That card no longer exists — skipped.", true);
+      await leave();
+    } else {
+      setFlash(`Couldn't save rating: ${err.message}`, true);
+    }
+  } finally {
+    busy = false;
+    ratings.querySelectorAll("button").forEach((b) => (b.disabled = false));
+  }
+}
+
+async function leave() {
+  card.classList.add("leaving");
+  await sleep(reducedMotion.matches ? 0 : 180);
+  showNext();
+}
+
+async function finish() {
+  current = null;
+  // Cards can come due while you review, so check once more before finishing.
+  if (reviewed) {
+    try {
+      const more = await api("/cards/due");
+      if (more.length) {
+        queue = more;
+        total += more.length;
+        return showNext();
+      }
+    } catch {
+      /* fall through to the done screen */
+    }
+  }
+  $("#done-icon").textContent = reviewed ? "🎉" : "☕";
+  if (reviewed) {
+    const remembered = reviewed - lapses;
+    $("#done-title").textContent = "All caught up!";
+    $("#done-summary").textContent =
+      `${reviewed} card${reviewed === 1 ? "" : "s"} reviewed · ${remembered} remembered` +
+      (lapses ? ` · ${lapses} to relearn tomorrow` : "");
+  } else {
+    $("#done-title").textContent = "Nothing due right now";
+    $("#done-summary").textContent = "Save words from the reader, or come back when cards are due.";
+  }
+  $("#progress-bar").style.width = reviewed ? "100%" : "0";
+  show("done");
+  setFlash("");
+}
+
+// ---- Audio ----
+
+function playAudio(url, btn) {
+  stopAudio();
+  player.src = url;
+  btn.classList.add("playing");
+  const done = () => btn.classList.remove("playing");
+  player.onended = player.onerror = player.onpause = done;
+  player.play().catch(() => {
+    done();
+    setFlash("Couldn't play audio.", true);
+  });
+}
+
+function stopAudio() {
+  player.pause();
+  document.querySelectorAll(".audio-btn.playing").forEach((b) => b.classList.remove("playing"));
+}
+
+$("#play-word").addEventListener("click", (e) => {
+  e.stopPropagation(); // don't also reveal the card
+  playAudio(current.audio_url, e.currentTarget);
+});
+$("#play-example").addEventListener("click", (e) => {
+  e.stopPropagation();
+  playAudio(`/api/tts/fr?text=${encodeURIComponent(current.example_sentence)}`, e.currentTarget);
+});
+
+// ---- Input ----
+
+card.addEventListener("click", reveal);
+revealBtn.addEventListener("click", reveal);
+ratings.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-q]");
+  if (btn) rate(Number(btn.dataset.q));
+});
+$("#check-again").addEventListener("click", start);
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || $("#session").hidden) return;
+  if ((e.key === " " || e.key === "Enter") && !revealed) {
+    e.preventDefault();
+    reveal();
+  } else if (/^[0-5]$/.test(e.key) && revealed) {
+    rate(Number(e.key));
+  } else if (e.key.toLowerCase() === "p" && current) {
+    $("#play-word").click();
+  }
+});
+
+start();
+</script>
+</body>
+</html>
