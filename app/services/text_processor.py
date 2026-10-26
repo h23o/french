@@ -48,6 +48,7 @@ def process_text(db: Session, text: str) -> list[dict]:
     # Ordered by next_review so duplicate cards resolve to the most overdue one.
     exact: dict[str, tuple[int, str, bool]] = {}
     by_form: dict[str, tuple[int, str, bool]] = {}
+    phrases: list[tuple[list[str], tuple[int, str, bool]]] = []  # multi-word cards, e.g. "il y a"
     now = utcnow()
     rows = db.execute(
         select(Card.id, Card.word, Card.next_review, Card.forms).order_by(Card.next_review, Card.id)
@@ -57,10 +58,15 @@ def process_text(db: Session, text: str) -> list[dict]:
         exact.setdefault(normalize_word(word), match)
         for form in forms or []:
             by_form.setdefault(form, match)
+        parts = [normalize_word(t) for t in tokenize(word)]
+        if len(parts) > 1:
+            phrases.append((parts, match))
+
+    normalized_tokens = [normalize_word(t) for t in tokens]
+    phrase_at = _match_phrases(normalized_tokens, phrases)
 
     result = []
-    for token in tokens:
-        normalized = normalize_word(token)
+    for token, normalized, phrase in zip(tokens, normalized_tokens, phrase_at):
         card_id, card_word, is_due = exact.get(normalized) or by_form.get(normalized) or (None, None, False)
         result.append(
             {
@@ -70,6 +76,28 @@ def process_text(db: Session, text: str) -> list[dict]:
                 "card_id": card_id,
                 "card_word": card_word,
                 "is_due": is_due,
+                "phrase": phrase,
             }
         )
     return result
+
+
+def _match_phrases(tokens: list[str], phrases: list[tuple[list[str], tuple[int, str, bool]]]) -> list[dict | None]:
+    """For each token, the phrase card it belongs to (exact token sequence), if any.
+
+    Longer phrases are matched first so "il y a" wins over "il y"; phrases never overlap.
+    """
+    phrase_at: list[dict | None] = [None] * len(tokens)
+    for parts, (card_id, card_word, is_due) in sorted(phrases, key=lambda p: -len(p[0])):
+        n = len(parts)
+        for i in range(len(tokens) - n + 1):
+            if tokens[i : i + n] == parts and all(p is None for p in phrase_at[i : i + n]):
+                for j in range(i, i + n):
+                    phrase_at[j] = {
+                        "card_id": card_id,
+                        "card_word": card_word,
+                        "is_due": is_due,
+                        "first": j == i,
+                        "last": j == i + n - 1,
+                    }
+    return phrase_at

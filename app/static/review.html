@@ -60,8 +60,26 @@
   .top a:hover { text-decoration: underline; }
   h1 { font-size: 1.25rem; margin: 0; }
   #remaining { color: var(--muted); font-size: .875rem; min-width: 4em; text-align: right; }
-  .progress { height: 4px; background: var(--border); border-radius: 2px; margin: 12px 0 20px; overflow: hidden; }
+  .progress { height: 4px; background: var(--border); border-radius: 2px; margin: 12px 0 12px; overflow: hidden; }
   .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+
+  /* Settings */
+  .settings { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 16px; font-size: .875rem; }
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .segmented button {
+    font: inherit;
+    border: 0;
+    padding: 6px 12px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .segmented button + button { border-left: 1px solid var(--border); }
+  .segmented button[aria-pressed="true"] { background: var(--hover); color: var(--text); font-weight: 600; }
+  .toggles { display: flex; gap: 14px; flex-wrap: wrap; }
+  .toggles label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+  .toggles label.disabled { opacity: .5; cursor: default; }
+  .toggles input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
 
   .btn {
     font: inherit;
@@ -96,15 +114,27 @@
     cursor: pointer;
     user-select: none;
   }
-  .flashcard.revealed { cursor: default; user-select: text; }
+  .flashcard.revealed, .flashcard.typing { cursor: default; user-select: text; }
   .flashcard.entering { animation: card-in .22s ease; }
   .flashcard.leaving { animation: card-out .18s ease forwards; }
   @keyframes card-in { from { opacity: 0; transform: translateX(24px); } }
   @keyframes card-out { to { opacity: 0; transform: translateX(-24px); } }
+  .practice-badge {
+    position: absolute;
+    top: 12px; left: 12px;
+    font-size: .75rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--hard-bg);
+    color: var(--hard-text);
+  }
 
   .word-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
-  #word { font: 600 clamp(2rem, 9vw, 3rem)/1.15 Georgia, "Iowan Old Style", serif; margin: 0; overflow-wrap: anywhere; }
-  #word .article { color: var(--muted); font-weight: 400; }
+  .french { font: 600 clamp(2rem, 9vw, 3rem)/1.15 Georgia, "Iowan Old Style", serif; margin: 0; overflow-wrap: anywhere; }
+  .french .article { color: var(--muted); font-weight: 400; }
+  .english { font-size: clamp(1.5rem, 6vw, 2rem); font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+  .hint-line { color: var(--muted); font-size: .875rem; margin: 0; }
 
   .audio-btn {
     width: 44px; height: 44px;
@@ -123,12 +153,34 @@
   .audio-btn svg { width: 50%; height: 50%; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); } }
 
-  .tap-hint { color: var(--muted); font-size: .875rem; margin: 8px 0 0; }
-  .back { width: 100%; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 4px; animation: reveal .2s ease; }
+  .back { width: 100%; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 4px; display: grid; gap: 10px; justify-items: center; animation: reveal .2s ease; }
   @keyframes reveal { from { opacity: 0; transform: translateY(-6px); } }
-  #translation { font-size: 1.375rem; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
-  .example { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
+  .back .french { font-size: clamp(1.75rem, 7vw, 2.4rem); }
+  .back .english { font-size: 1.375rem; }
+  .example { display: flex; align-items: center; justify-content: center; gap: 8px; }
   #example { font: italic 1.0625rem/1.5 Georgia, serif; color: var(--muted); margin: 0; }
+
+  /* Typed answers */
+  .answer-form { width: 100%; max-width: 360px; display: flex; gap: 8px; }
+  .answer-form input {
+    flex: 1;
+    min-width: 0;
+    font: 1.125rem Georgia, serif;
+    font-size: max(16px, 1.125rem); /* avoids iOS zoom on focus */
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .answer-form input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .answer-form .btn { padding: 10px 16px; }
+  .feedback { margin: 0; padding: 8px 12px; border-radius: 10px; font-size: .9375rem; font-weight: 600; }
+  .feedback.good { background: var(--good-bg); color: var(--good-text); }
+  .feedback.close { background: var(--hard-bg); color: var(--hard-text); }
+  .feedback.bad { background: var(--fail-bg); color: var(--fail-text); }
+  .feedback .typed { font-family: Georgia, serif; font-weight: 400; }
 
   /* Actions */
   .actions { margin-top: 16px; min-height: 132px; }
@@ -140,7 +192,7 @@
     display: grid;
     gap: 2px;
     padding: 10px 4px;
-    border: 1px solid transparent;
+    border: 2px solid transparent;
     border-radius: 10px;
     cursor: pointer;
   }
@@ -150,8 +202,9 @@
   .rate.hard { background: var(--hard-bg); color: var(--hard-text); }
   .rate.good { background: var(--good-bg); color: var(--good-text); }
   .rate:hover { border-color: currentColor; }
+  .rate.suggested { border-color: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); }
   .rate:disabled { opacity: .6; cursor: progress; }
-  .rate:focus-visible, .btn:focus-visible, .audio-btn:focus-visible, .flashcard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .rate:focus-visible, .btn:focus-visible, .audio-btn:focus-visible, .flashcard:focus-visible, .segmented button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   #flash { min-height: 1.5em; margin: 12px 0 0; text-align: center; color: var(--muted); font-size: .875rem; }
   #flash.error { color: var(--danger); }
@@ -180,22 +233,28 @@
   </header>
   <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
 
+  <div class="settings">
+    <div class="segmented" role="group" aria-label="Direction">
+      <button type="button" data-direction="fr-en" aria-pressed="true">FR → EN</button>
+      <button type="button" data-direction="en-fr" aria-pressed="false">EN → FR</button>
+    </div>
+    <div class="toggles">
+      <label id="typed-label" title="Type the French instead of just revealing it (EN → FR only)">
+        <input id="opt-typed" type="checkbox"> Type answer
+      </label>
+      <label title="Cards you miss (0–2) come back at the end of this session for practice. Practice ratings aren't saved.">
+        <input id="opt-repeat" type="checkbox" checked> Repeat missed
+      </label>
+    </div>
+  </div>
+
   <section id="loading" class="panel"><p>Loading cards…</p></section>
 
   <section id="session" hidden>
-    <article id="card" class="flashcard" tabindex="0" aria-label="Flashcard, tap to reveal">
-      <div class="word-row">
-        <h2 id="word" lang="fr"></h2>
-        <button id="play-word" class="audio-btn" type="button" aria-label="Play pronunciation"></button>
-      </div>
-      <p id="tap-hint" class="tap-hint">Tap to reveal</p>
-      <div id="back" class="back" hidden>
-        <p id="translation"></p>
-        <div id="example-row" class="example">
-          <p id="example" lang="fr"></p>
-          <button id="play-example" class="audio-btn small" type="button" aria-label="Play example sentence"></button>
-        </div>
-      </div>
+    <article id="card" class="flashcard" tabindex="0">
+      <span id="practice-badge" class="practice-badge" hidden>Practice · not saved</span>
+      <div id="front"></div>
+      <div id="back" class="back" hidden></div>
     </article>
 
     <div class="actions">
@@ -210,7 +269,7 @@
       </div>
     </div>
     <p id="flash" aria-live="polite"></p>
-    <p class="keys"><kbd>Space</kbd> reveal · <kbd>0</kbd>–<kbd>5</kbd> rate · <kbd>P</kbd> play</p>
+    <p id="keys" class="keys"></p>
   </section>
 
   <section id="done" class="panel" hidden>
@@ -235,18 +294,69 @@ const player = new Audio();
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ARTICLES = { m: "un", f: "une", mf: "un/une" };
-
 const SPEAKER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
-$("#play-word").innerHTML = SPEAKER_ICON;
-$("#play-example").innerHTML = SPEAKER_ICON;
+
+// ---- Settings (remembered per browser) ----
+
+const settings = { direction: "fr-en", typed: false, repeat: true };
+try {
+  Object.assign(settings, JSON.parse(localStorage.getItem("review-settings") ?? "{}"));
+} catch {
+  /* storage unavailable: use defaults */
+}
+function saveSettings() {
+  try {
+    localStorage.setItem("review-settings", JSON.stringify(settings));
+  } catch {
+    /* ignore */
+  }
+}
+const typedMode = () => settings.direction === "en-fr" && settings.typed;
+
+function syncSettingsUI() {
+  document.querySelectorAll("[data-direction]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.direction === settings.direction));
+  $("#opt-typed").checked = settings.typed;
+  $("#opt-typed").disabled = settings.direction !== "en-fr";
+  $("#typed-label").classList.toggle("disabled", settings.direction !== "en-fr");
+  $("#opt-repeat").checked = settings.repeat;
+  $("#keys").innerHTML = typedMode()
+    ? "<kbd>Enter</kbd> check, then <kbd>Enter</kbd> accept the suggested rating · <kbd>0</kbd>–<kbd>5</kbd> rate"
+    : "<kbd>Space</kbd> reveal · <kbd>0</kbd>–<kbd>5</kbd> rate · <kbd>P</kbd> play";
+}
+
+document.querySelectorAll("[data-direction]").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    settings.direction = btn.dataset.direction;
+    settingsChanged();
+  }),
+);
+$("#opt-typed").addEventListener("change", (e) => {
+  settings.typed = e.target.checked;
+  settingsChanged();
+});
+$("#opt-repeat").addEventListener("change", (e) => {
+  settings.repeat = e.target.checked;
+  settingsChanged();
+});
+function settingsChanged() {
+  saveSettings();
+  syncSettingsUI();
+  if (current && !revealed) showCard(); // re-draw the unanswered card in the new mode
+}
+
+// ---- Session state ----
+// Queue items are {card, practice}. Practice items are repeats of cards missed this
+// session: they're shown again but their ratings aren't sent to the server.
 
 let queue = [];
-let current = null;
+let current = null; // queue[0] while it's on screen
 let revealed = false;
+let suggestion = null; // rating suggested by a typed answer
 let busy = false;
-let total = 0;
+let done = 0; // items finished this session (reviews + practice)
 let reviewed = 0;
 let lapses = 0;
+let practiced = 0;
 
 async function api(path, options = {}) {
   const resp = await fetch(path, {
@@ -261,6 +371,12 @@ async function api(path, options = {}) {
   return body;
 }
 
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
 function show(id) {
   for (const section of ["loading", "session", "done"]) $(`#${section}`).hidden = section !== id;
 }
@@ -271,21 +387,20 @@ function setFlash(message, isError = false) {
 }
 
 function updateProgress() {
-  const left = queue.length;
-  $("#remaining").textContent = left ? `${left} left` : "";
-  $("#progress-bar").style.width = total ? `${(reviewed / total) * 100}%` : "0";
+  const total = done + queue.length;
+  $("#remaining").textContent = queue.length ? `${queue.length} left` : "";
+  $("#progress-bar").style.width = total ? `${(done / total) * 100}%` : "0";
 }
 
 async function start() {
   show("loading");
   setFlash("");
   try {
-    queue = await api("/cards/due");
+    queue = (await api("/cards/due")).map((c) => ({ card: c, practice: false }));
   } catch (err) {
     $("#loading").querySelector("p").textContent = `Couldn't load cards: ${err.message}`;
     return;
   }
-  total = reviewed + queue.length;
   showNext();
 }
 
@@ -293,62 +408,190 @@ function showNext() {
   stopAudio();
   updateProgress();
   if (!queue.length) return finish();
-
   current = queue[0];
-  revealed = false;
-  const word = $("#word");
-  word.textContent = current.word;
-  if (ARTICLES[current.gender]) {
-    word.prepend(Object.assign(document.createElement("span"), { className: "article", textContent: `${ARTICLES[current.gender]} ` }));
-  }
-  $("#translation").textContent = current.translation;
-  $("#example").textContent = current.example_sentence ?? "";
-  $("#example-row").hidden = !current.example_sentence;
-  $("#back").hidden = true;
-  $("#tap-hint").hidden = false;
-  card.classList.remove("revealed", "leaving");
-  card.setAttribute("aria-label", "Flashcard, tap to reveal");
-  ratings.hidden = true;
-  revealBtn.hidden = false;
+  showCard();
   show("session");
-
   card.classList.remove("entering");
   void card.offsetWidth; // restart the animation
   card.classList.add("entering");
-  revealBtn.focus({ preventScroll: true });
 }
 
-function reveal() {
+// ---- Card faces ----
+
+function frenchHeading(c) {
+  const article = ARTICLES[c.gender];
+  return el("h2", { className: "french", lang: "fr" },
+    ...(article ? [el("span", { className: "article", textContent: `${article} ` })] : []),
+    c.word,
+  );
+}
+
+function audioButton(text, label, small = false) {
+  const btn = el("button", { type: "button", className: `audio-btn${small ? " small" : ""}` });
+  btn.innerHTML = SPEAKER_ICON;
+  btn.setAttribute("aria-label", label);
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation(); // don't also reveal the card
+    playAudio(text, btn);
+  });
+  return btn;
+}
+
+const wordAudioUrl = (c) => c.audio_url; // includes the article for nouns
+const sentenceAudioUrl = (text) => `/api/tts/fr?text=${encodeURIComponent(text)}`;
+
+function showCard() {
+  const c = current.card;
+  revealed = false;
+  suggestion = null;
+  card.classList.remove("revealed", "leaving", "typing");
+  $("#practice-badge").hidden = !current.practice;
+  $("#back").hidden = true;
+  $("#back").replaceChildren();
+  ratings.hidden = true;
+  ratings.querySelectorAll(".suggested").forEach((b) => b.classList.remove("suggested"));
+
+  const front = [];
+  if (settings.direction === "fr-en") {
+    front.push(el("div", { className: "word-row" }, frenchHeading(c), audioButton(wordAudioUrl(c), "Play pronunciation")));
+    front.push(el("p", { className: "hint-line", textContent: "Tap to reveal" }));
+  } else {
+    front.push(el("p", { className: "english", textContent: c.translation }));
+    front.push(el("p", { className: "hint-line", textContent: c.gender ? "noun — include un / une" : c.word.includes(" ") ? "phrase" : "" }));
+    if (typedMode()) {
+      const input = el("input", {
+        id: "answer", autocomplete: "off", autocapitalize: "off", spellcheck: false, lang: "fr",
+        placeholder: "Type the French…", ariaLabel: "Your answer",
+      });
+      const form = el("form", { className: "answer-form" }, input, el("button", { type: "submit", className: "btn", textContent: "Check" }));
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        checkTyped(input.value);
+      });
+      front.push(form);
+    } else {
+      front.push(el("p", { className: "hint-line", textContent: "Say it, then tap to reveal" }));
+    }
+  }
+  $("#front").replaceChildren(...front.filter((n) => n.textContent || n.childElementCount));
+
+  card.classList.toggle("typing", typedMode());
+  revealBtn.hidden = typedMode();
+  if (typedMode()) $("#answer").focus({ preventScroll: true });
+  else revealBtn.focus({ preventScroll: true });
+}
+
+function reveal(feedback = null) {
   if (!current || revealed) return;
   revealed = true;
+  const c = current.card;
+  const back = [];
+  if (feedback) back.push(feedback);
+  if (settings.direction === "fr-en") {
+    back.push(el("p", { className: "english", textContent: c.translation }));
+  } else {
+    back.push(el("div", { className: "word-row" }, frenchHeading(c), audioButton(wordAudioUrl(c), "Play pronunciation")));
+  }
+  if (c.example_sentence) {
+    back.push(el("div", { className: "example" },
+      el("p", { id: "example", lang: "fr", textContent: c.example_sentence }),
+      audioButton(sentenceAudioUrl(c.example_sentence), "Play example sentence", true),
+    ));
+  }
+  $("#back").replaceChildren(...back);
   $("#back").hidden = false;
-  $("#tap-hint").hidden = true;
+  $("#front").querySelector(".hint-line:last-child")?.remove();
+  $("#front").querySelector(".answer-form")?.remove();
   card.classList.add("revealed");
-  card.setAttribute("aria-label", "Flashcard");
   revealBtn.hidden = true;
   ratings.hidden = false;
+  ratings.querySelectorAll(".suggested").forEach((b) => b.classList.remove("suggested"));
+  if (suggestion !== null) ratings.querySelector(`[data-q="${suggestion}"]`).classList.add("suggested");
 }
+
+// ---- Typed answers ----
+
+const normalizeAnswer = (s) => s.normalize("NFC").replace(/[’ʼ‘]/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
+const stripAccents = (s) => s.normalize("NFD").replace(/\p{M}/gu, "").normalize("NFC");
+const ARTICLE_RE = /^(?:(un|une|le|la|les)\s+|(l)')/;
+const GENDER_ARTICLES = { m: ["un", "le"], f: ["une", "la"] };
+
+function checkAnswer(input, c) {
+  const expected = normalizeAnswer(c.word);
+  let typed = normalizeAnswer(input);
+  let article = null;
+  const m = typed.match(ARTICLE_RE);
+  if (m && !ARTICLE_RE.test(expected)) {
+    article = m[1] ?? "l'";
+    typed = typed.slice(m[0].length).trim();
+  }
+  const word = typed === expected ? "exact" : stripAccents(typed) === stripAccents(expected) ? "accents" : "wrong";
+  // l' and les don't show gender, so only judge un/une/le/la.
+  let gender = null;
+  if (GENDER_ARTICLES[c.gender] && article && !["l'", "les"].includes(article)) {
+    gender = GENDER_ARTICLES[c.gender].includes(article) ? "right" : "wrong";
+  }
+  return { word, gender, empty: !typed };
+}
+
+function checkTyped(input) {
+  const c = current.card;
+  const result = checkAnswer(input, c);
+  const article = ARTICLES[c.gender];
+  const right = article && c.gender !== "mf" ? `${article} ${c.word}` : c.word;
+  let cls;
+  let text;
+  if (result.empty) {
+    [cls, text, suggestion] = ["bad", "No answer — here it is:", 0];
+  } else if (result.word === "wrong") {
+    [cls, text, suggestion] = ["bad", "Not quite. You typed ", 1];
+  } else if (result.word === "accents") {
+    [cls, text, suggestion] = ["close", "Almost — check the accents. You typed ", 3];
+  } else if (result.gender === "wrong") {
+    [cls, text, suggestion] = ["close", `Right word, wrong gender: it's ${right}. You typed `, 3];
+  } else {
+    [cls, text, suggestion] = ["good", result.gender === "right" ? "Correct, gender too!" : "Correct!", 4];
+    if (article && c.gender !== "mf" && result.gender === null) text += ` Remember: ${right}.`;
+  }
+  const feedback = el("p", { className: `feedback ${cls}` }, text);
+  if (cls !== "good" && !result.empty) feedback.append(el("span", { className: "typed", lang: "fr", textContent: `“${input.trim()}”` }));
+  reveal(feedback);
+}
+
+// ---- Rating ----
 
 async function rate(quality) {
   if (!revealed || busy) return;
   busy = true;
+  const item = current;
   ratings.querySelectorAll("button").forEach((b) => (b.disabled = true));
   try {
-    const updated = await api(`/cards/${current.id}/review`, {
-      method: "POST",
-      body: JSON.stringify({ quality }),
-    });
-    reviewed++;
-    if (quality < 3) lapses++;
-    queue.shift();
-    const days = updated.interval === 1 ? "tomorrow" : `in ${updated.interval} days`;
-    setFlash(`“${updated.word}” comes back ${days}.`);
+    const repeat = settings.repeat && quality < 3;
+    if (item.practice) {
+      // Practice repeat: nothing is saved; keep it coming back until it's remembered.
+      queue.shift();
+      done++;
+      practiced++;
+      if (repeat) queue.push(item);
+      setFlash(repeat ? `“${item.card.word}” will come round again.` : `“${item.card.word}” practised.`);
+    } else {
+      const updated = await api(`/cards/${item.card.id}/review`, {
+        method: "POST",
+        body: JSON.stringify({ quality }),
+      });
+      queue.shift();
+      done++;
+      reviewed++;
+      if (quality < 3) lapses++;
+      if (repeat) queue.push({ card: updated, practice: true });
+      const days = updated.interval === 1 ? "tomorrow" : `in ${updated.interval} days`;
+      setFlash(`“${updated.word}” comes back ${days}${repeat ? " — and once more for practice now" : ""}.`);
+    }
     await leave();
   } catch (err) {
     if (err.status === 404) {
       // Deleted elsewhere: drop it and move on.
       queue.shift();
-      total--;
       setFlash("That card no longer exists — skipped.", true);
       await leave();
     } else {
@@ -373,8 +616,7 @@ async function finish() {
     try {
       const more = await api("/cards/due");
       if (more.length) {
-        queue = more;
-        total += more.length;
+        queue = more.map((c) => ({ card: c, practice: false }));
         return showNext();
       }
     } catch {
@@ -383,11 +625,11 @@ async function finish() {
   }
   $("#done-icon").textContent = reviewed ? "🎉" : "☕";
   if (reviewed) {
-    const remembered = reviewed - lapses;
+    const parts = [`${reviewed} card${reviewed === 1 ? "" : "s"} reviewed`, `${reviewed - lapses} remembered`];
+    if (lapses) parts.push(`${lapses} to relearn tomorrow`);
+    if (practiced) parts.push(`${practiced} practice repeat${practiced === 1 ? "" : "s"}`);
     $("#done-title").textContent = "All caught up!";
-    $("#done-summary").textContent =
-      `${reviewed} card${reviewed === 1 ? "" : "s"} reviewed · ${remembered} remembered` +
-      (lapses ? ` · ${lapses} to relearn tomorrow` : "");
+    $("#done-summary").textContent = parts.join(" · ");
   } else {
     $("#done-title").textContent = "Nothing due right now";
     $("#done-summary").textContent = "Save words from the reader, or come back when cards are due.";
@@ -403,10 +645,10 @@ function playAudio(url, btn) {
   stopAudio();
   player.src = url;
   btn.classList.add("playing");
-  const done = () => btn.classList.remove("playing");
-  player.onended = player.onerror = player.onpause = done;
+  const stop = () => btn.classList.remove("playing");
+  player.onended = player.onerror = player.onpause = stop;
   player.play().catch(() => {
-    done();
+    stop();
     setFlash("Couldn't play audio.", true);
   });
 }
@@ -416,37 +658,43 @@ function stopAudio() {
   document.querySelectorAll(".audio-btn.playing").forEach((b) => b.classList.remove("playing"));
 }
 
-$("#play-word").addEventListener("click", (e) => {
-  e.stopPropagation(); // don't also reveal the card
-  playAudio(current.audio_url, e.currentTarget);
-});
-$("#play-example").addEventListener("click", (e) => {
-  e.stopPropagation();
-  playAudio(`/api/tts/fr?text=${encodeURIComponent(current.example_sentence)}`, e.currentTarget);
-});
-
 // ---- Input ----
 
-card.addEventListener("click", reveal);
-revealBtn.addEventListener("click", reveal);
+card.addEventListener("click", (e) => {
+  if (!typedMode() && !e.target.closest("button, input")) reveal();
+});
+revealBtn.addEventListener("click", () => reveal());
 ratings.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-q]");
   if (btn) rate(Number(btn.dataset.q));
 });
-$("#check-again").addEventListener("click", start);
+$("#check-again").addEventListener("click", () => {
+  done = reviewed = lapses = practiced = 0;
+  start();
+});
 
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || $("#session").hidden) return;
-  if ((e.key === " " || e.key === "Enter") && !revealed) {
-    e.preventDefault();
-    reveal();
-  } else if (/^[0-5]$/.test(e.key) && revealed) {
+  const target = e.target instanceof Element ? e.target : document.body;
+  if (target.matches("input:not([type=checkbox]), textarea")) return; // typing an answer
+  // Space/Enter on a focused button or checkbox should do that control's own thing.
+  const onControl = target.matches("button, input");
+  if (e.key.toLowerCase() === "p") {
+    card.querySelector(".audio-btn")?.click(); // only present when the French is showing
+  } else if (!revealed) {
+    if ((e.key === " " || e.key === "Enter") && !typedMode() && !onControl) {
+      e.preventDefault();
+      reveal();
+    }
+  } else if (/^[0-5]$/.test(e.key)) {
     rate(Number(e.key));
-  } else if (e.key.toLowerCase() === "p" && current) {
-    $("#play-word").click();
+  } else if (e.key === "Enter" && suggestion !== null && !onControl) {
+    e.preventDefault();
+    rate(suggestion);
   }
 });
 
+syncSettingsUI();
 start();
 </script>
 </body>

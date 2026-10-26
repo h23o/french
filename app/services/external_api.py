@@ -40,9 +40,9 @@ EXAMPLE_COUNT = 3
 EXAMPLE_CANDIDATES = 10
 
 TAG_RE = re.compile(r"<[^>]+>")
-# The base form is the last "of X" in a form-of definition:
-# "plural of maison", "first-person singular present indicative of être", "inflection of manger:".
-FORM_OF_RE = re.compile(r"\bof\s+([^\s,;:()“”\"]+)")
+# The base form is the last "of X" in a form-of definition: "plural of maison",
+# "inflection of manger:", "plural of œil, eyes", and multi-word ones like "… of y avoir: there is".
+FORM_OF_RE = re.compile(r"\bof\s+([^,;:()“”\"]+?)\s*(?=[,;:(“\"]|$)")
 # A single French word; rejects conjugation-table junk ("fr-conj-auto", "avoir + past participle", IPA).
 FRENCH_WORD_RE = re.compile(r"^[a-zàâäæçéèêëîïôöœùûüÿ]+(?:['-][a-zàâäæçéèêëîïôöœùûüÿ]+)*$")
 TABLE_TAGS = {"table-tags", "inflection-template"}
@@ -134,6 +134,17 @@ def _forms(entries: list[dict]) -> list[str]:
     return forms
 
 
+def _primary_definition(sense: dict) -> str | None:
+    """The sense's definition, or None for a bare inflection ("feminine singular of beau" is a poor translation).
+
+    Some form-of senses carry a gloss after a colon, e.g. "… of y avoir: there is, there are".
+    """
+    definition = sense["definition"].strip()
+    if not _is_form_of(sense):
+        return definition
+    return definition.partition(": ")[2].strip() or None
+
+
 def _parse_free_dictionary(entries: list[dict], word: str) -> dict:
     if not entries or not entries[0]["senses"]:
         return _empty_entry()
@@ -145,8 +156,7 @@ def _parse_free_dictionary(entries: list[dict], word: str) -> dict:
             for sense in entry["senses"]
         ),
         "part_of_speech": entries[0]["partOfSpeech"].lower(),
-        # "feminine singular of beau" is a poor translation; leave it empty and point at the base form.
-        "definition": None if _is_form_of(first_sense) else first_sense["definition"].strip(),
+        "definition": _primary_definition(first_sense),
         "gender": _gender(entries),
         "base_forms": _base_forms(entries, word),
         "forms": _forms(entries),
@@ -212,7 +222,8 @@ async def fetch_word_info(word: str) -> dict | None:
 
 async def fetch_examples(client: httpx.AsyncClient, word: str) -> list[dict]:
     params = {
-        "q": word,
+        # Quotes make multi-word lookups ("il y a") an exact-phrase search instead of "all of these words".
+        "q": f'"{word}"' if " " in word else word,
         "lang": "fra",
         "sort": "relevance",
         "limit": EXAMPLE_CANDIDATES,

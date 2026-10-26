@@ -75,6 +75,16 @@ class ProcessTextRequest(BaseModel):
     text: str
 
 
+class PhraseMatch(BaseModel):
+    """A multi-word card ("il y a") that this token is part of."""
+
+    card_id: int
+    card_word: str
+    is_due: bool
+    first: bool  # first / last token of the phrase in the text
+    last: bool
+
+
 class TokenResponse(BaseModel):
     token: str
     normalized: str
@@ -82,6 +92,7 @@ class TokenResponse(BaseModel):
     card_id: int | None
     card_word: str | None  # the saved word that matched; differs from the token for forms ("maisons" -> "maison")
     is_due: bool
+    phrase: PhraseMatch | None
 
 
 class Meaning(BaseModel):

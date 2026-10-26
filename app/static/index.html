@@ -18,6 +18,9 @@
     --known-text: #0b3a66;
     --due-bg: #ffd49e;
     --due-text: #5e2f00;
+    --phrase-known: #4f8fd6;
+    --phrase-due: #e0892a;
+    --range-bg: #d9e4ff;
     --danger: #b42318;
     --shadow: 0 10px 40px rgba(0, 0, 0, .14);
     color-scheme: light dark;
@@ -36,6 +39,9 @@
       --known-text: #d3e8ff;
       --due-bg: #5a3311;
       --due-text: #ffdcb3;
+      --phrase-known: #6a9fe0;
+      --phrase-due: #d9822e;
+      --range-bg: #24345e;
       --danger: #ff8a80;
       --shadow: 0 10px 40px rgba(0, 0, 0, .5);
     }
@@ -220,6 +226,56 @@
   #save-form input, #save-form textarea, #save-form select { font-weight: 400; } /* don't inherit the bold label */
 
   .article { color: var(--muted); font-weight: 400; }
+
+  /* Phrases: saved ones are underlined in the text; a selection in progress is tinted. */
+  .phrase { border-bottom: 3px solid var(--phrase-known); padding-bottom: 1px; }
+  .phrase.due { border-bottom-color: var(--phrase-due); }
+  .swatch.phrase { background: none; border-bottom: 3px solid var(--phrase-known); border-radius: 0; height: 9px; }
+  .word.in-range { background: var(--range-bg); box-shadow: 0 0 0 2px var(--range-bg); }
+  #output.selecting .word { cursor: crosshair; }
+  .output-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .output-bar #stats { margin: 0; }
+  #phrase-hint { margin: 0 0 8px; }
+  .chip {
+    flex: none;
+    font: inherit;
+    font-size: .8125rem;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .phrase-link { margin: 12px 0 0; font-size: .875rem; color: var(--muted); }
+  .phrase-link button {
+    font: 600 1rem Georgia, serif;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+  .phrase-link button:hover { text-decoration: underline; }
+
+  .heading-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .heading-row h2 { margin: 0; }
+  .audio-btn {
+    width: 32px; height: 32px;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .audio-btn:hover, .audio-btn.playing { border-color: var(--accent); color: var(--accent); }
+  .audio-btn svg { width: 16px; height: 16px; }
   .back-btn {
     font: inherit;
     font-size: .875rem;
@@ -287,9 +343,15 @@
     <div class="legend" aria-hidden="true">
       <span><span class="swatch known"></span>In your cards</span>
       <span><span class="swatch due"></span>Due for review</span>
+      <span><span class="swatch phrase"></span>Saved phrase</span>
     </div>
     <section class="card">
-      <p id="stats" class="hint" hidden></p>
+      <div class="output-bar">
+        <p id="stats" class="hint" hidden></p>
+        <button id="phrase-btn" class="chip" type="button" aria-pressed="false" hidden
+                title="Tap the first and last word of a phrase. On a computer you can also Shift+click.">Select phrase</button>
+      </div>
+      <p id="phrase-hint" class="hint" hidden></p>
       <div id="output" aria-live="polite"></div>
     </section>
   </main>
@@ -299,12 +361,18 @@
   <header class="panel-head">
     <div>
       <button id="panel-back" class="back-btn" type="button" hidden></button>
-      <h2 id="panel-word" lang="fr"></h2>
+      <div class="heading-row">
+        <h2 id="panel-word" lang="fr"></h2>
+        <button id="panel-audio" class="audio-btn" type="button" aria-label="Play pronunciation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        </button>
+      </div>
       <span id="panel-badge" class="badge"></span>
     </div>
     <button id="panel-close" class="icon-btn" type="button" aria-label="Close">×</button>
   </header>
   <div class="panel-body">
+    <p id="phrase-link" class="phrase-link" hidden></p>
     <div id="lookup"></div>
     <form id="save-form" hidden>
       <label>Translation
@@ -337,9 +405,16 @@ const lookupBox = $("#lookup");
 const saveForm = $("#save-form");
 
 let currentText = "";
+let displayText = ""; // currentText as rendered (NFC)
 let tokens = [];
-let activeIndex = null;
+let spans = []; // [start, end] of each token in displayText, or null if not found
+let activeRange = null; // {start, end} token indices highlighted for the open panel
+let phraseMode = false; // "Select phrase": next two taps pick the first and last word
+let phraseStart = null;
 const lookupCache = new Map(); // normalized word -> lookup result or {error}
+const player = new Audio();
+const NEW_STATUS = { in_database: false, is_due: false, card_word: null, phrase: null };
+const MAX_PHRASE_WORDS = 8;
 
 function el(tag, props = {}, ...children) {
   const node = Object.assign(document.createElement(tag), props);
@@ -404,7 +479,10 @@ textInput.addEventListener("keydown", (e) => {
 
 async function loadTokens(text) {
   tokens = await api("/api/process-text", { method: "POST", body: JSON.stringify({ text }) });
-  if (text !== currentText) activeIndex = null;
+  if (text !== currentText) {
+    activeRange = null;
+    setPhraseMode(false);
+  }
   currentText = text;
   render();
 }
@@ -414,28 +492,38 @@ function render() {
   // spacing, punctuation and line breaks. The tokenizer sees NFC text with curly
   // apostrophes straightened; that swap is one-for-one, so indices into `search`
   // line up with `display`.
-  const display = currentText.normalize("NFC");
+  const display = (displayText = currentText.normalize("NFC"));
   const search = display.replace(/[’ʼ‘]/g, "'");
   const frag = document.createDocumentFragment();
+  let target = frag; // the phrase <span> while inside a saved phrase
   let cursor = 0;
+  spans = [];
 
   tokens.forEach((tok, i) => {
     const start = search.indexOf(tok.token, cursor);
     const btn = el("button", { type: "button", className: `word ${tokenState(tok)}` });
     btn.dataset.index = i;
     if (tok.card_word && tok.card_word.toLowerCase() !== tok.normalized) btn.title = `Form of your card “${tok.card_word}”`;
-    if (i === activeIndex) btn.classList.add("active");
+    if (start !== -1) target.append(display.slice(cursor, start));
+    if (tok.phrase?.first) {
+      target = el("span", { className: `phrase ${tok.phrase.is_due ? "due" : ""}`, title: `Saved phrase “${tok.phrase.card_word}”` });
+      frag.append(target);
+    }
     if (start === -1) {
       btn.textContent = tok.token;
+      spans.push(null);
     } else {
-      frag.append(display.slice(cursor, start));
       btn.textContent = display.slice(start, start + tok.token.length);
+      spans.push([start, start + tok.token.length]);
       cursor = start + tok.token.length;
     }
-    frag.append(btn);
+    target.append(btn);
+    if (tok.phrase?.last) target = frag;
   });
   frag.append(display.slice(cursor));
   output.replaceChildren(frag);
+  markActive();
+  $("#phrase-btn").hidden = tokens.length < 2;
 
   const unique = new Map(tokens.map((t) => [t.normalized, t]));
   const known = [...unique.values()].filter((t) => t.in_database).length;
@@ -447,8 +535,81 @@ function render() {
 
 output.addEventListener("click", (e) => {
   const btn = e.target.closest("button.word");
-  if (btn) openPanel(Number(btn.dataset.index));
+  if (!btn) return;
+  const index = Number(btn.dataset.index);
+  if (phraseMode) {
+    if (phraseStart === null) {
+      phraseStart = index;
+      activeRange = { start: index, end: index };
+      markActive();
+      setPhraseHint("Now tap the last word of the phrase.");
+    } else {
+      const start = phraseStart;
+      setPhraseMode(false);
+      openRange(start, index);
+    }
+  } else if (e.shiftKey && activeRange) {
+    openRange(activeRange.start, index); // Shift+click extends the open word into a phrase
+  } else {
+    openRange(index, index);
+  }
 });
+
+function markActive() {
+  output.querySelectorAll(".word.active, .word.in-range").forEach((b) => b.classList.remove("active", "in-range"));
+  if (!activeRange) return;
+  const { start, end } = activeRange;
+  for (let i = start; i <= end; i++) {
+    output.querySelector(`[data-index="${i}"]`)?.classList.add(start === end ? "active" : "in-range");
+  }
+}
+
+// ---- Phrase selection ----
+
+$("#phrase-btn").addEventListener("click", () => setPhraseMode(!phraseMode));
+
+function setPhraseMode(on) {
+  phraseMode = on;
+  phraseStart = null;
+  const btn = $("#phrase-btn");
+  btn.setAttribute("aria-pressed", on);
+  btn.textContent = on ? "Cancel" : "Select phrase";
+  output.classList.toggle("selecting", on);
+  setPhraseHint(on ? "Tap the first word of the phrase." : "");
+  if (on) {
+    activeRange = null;
+    markActive();
+  }
+}
+
+function setPhraseHint(text, isError = false) {
+  const hint = $("#phrase-hint");
+  hint.textContent = text;
+  hint.hidden = !text;
+  hint.className = isError ? "error" : "hint";
+}
+
+// Same normalization as the server's normalize_word, so saved phrases match the text.
+const normalizePhrase = (s) => s.normalize("NFC").replace(/[’ʼ‘]/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
+
+async function openRange(a, b) {
+  const start = Math.min(a, b);
+  const end = Math.max(a, b);
+  if (end - start + 1 > MAX_PHRASE_WORDS) {
+    setPhraseHint(`Phrases can be at most ${MAX_PHRASE_WORDS} words.`, true);
+    return;
+  }
+  setPhraseHint("");
+  activeRange = { start, end };
+  markActive();
+  if (start === end) return showWord(tokens[start].normalized, tokens[start], null);
+
+  const phrase = spans[start] && spans[end]
+    ? normalizePhrase(displayText.slice(spans[start][0], spans[end][1]))
+    : normalizePhrase(tokens.slice(start, end + 1).map((t) => t.token).join(" "));
+  const status = await wordStatus(phrase).catch(() => NEW_STATUS);
+  if (activeRange?.start === start && activeRange?.end === end) showWord(phrase, status, null);
+}
 
 // ---- Lookup panel ----
 // The panel shows one word at a time: the clicked token, or a base form reached
@@ -457,20 +618,15 @@ output.addEventListener("click", (e) => {
 const ARTICLES = { m: "un", f: "une", mf: "un/une" };
 let view = null; // { word, status: {in_database, is_due, card_word}, from }
 
-function openPanel(index) {
-  output.querySelector(".word.active")?.classList.remove("active");
-  output.querySelector(`[data-index="${index}"]`)?.classList.add("active");
-  activeIndex = index;
-  showWord(tokens[index].normalized, tokens[index], null);
-}
-
 async function showWord(word, status, from) {
-  const current = (view = { word, status, from });
+  const current = (view = { word, status, from, spoken: word });
+  stopAudio();
   $("#panel-word").replaceChildren(word);
   const back = $("#panel-back");
   back.hidden = !from;
   if (from) back.textContent = `← ${from.word}`;
   updatePanelStatus(status, word);
+  showPhraseLink(status, word);
   lookupBox.replaceChildren(el("p", { className: "hint", textContent: "Looking up…" }));
   saveForm.hidden = true;
   $("#save-error").hidden = true;
@@ -491,29 +647,71 @@ async function showWord(word, status, from) {
   renderLookup(result);
 }
 
-// Card status for a word that isn't a token in the text (a base form).
+// Card status for a word or phrase that isn't a single token in the text (a base form, a selected phrase).
 async function wordStatus(word) {
-  const [tok] = await api("/api/process-text", { method: "POST", body: JSON.stringify({ text: word }) });
-  return tok?.normalized === word ? tok : { in_database: false, is_due: false, card_word: null };
+  const toks = await api("/api/process-text", { method: "POST", body: JSON.stringify({ text: word }) });
+  if (toks.length === 1 && toks[0].normalized === word) return toks[0];
+  const phrase = toks[0]?.phrase;
+  if (toks.length > 1 && phrase && toks.every((t) => t.phrase?.card_id === phrase.card_id)) {
+    return { in_database: true, is_due: phrase.is_due, card_id: phrase.card_id, card_word: phrase.card_word, phrase: null };
+  }
+  return NEW_STATUS;
 }
 
 async function openBaseForm(word) {
   const from = view;
-  let status;
-  try {
-    status = await wordStatus(word);
-  } catch {
-    status = { in_database: false, is_due: false, card_word: null };
-  }
+  const status = await wordStatus(word).catch(() => NEW_STATUS);
   if (view === from) showWord(word, status, from);
+}
+
+// A word inside a saved phrase links to the phrase card.
+function showPhraseLink(status, word) {
+  const link = $("#phrase-link");
+  const phrase = status.phrase;
+  link.hidden = !phrase;
+  if (!phrase) return;
+  const btn = el("button", { type: "button", lang: "fr", textContent: `${phrase.card_word} →` });
+  btn.addEventListener("click", () => {
+    const index = tokens.indexOf(status);
+    if (index !== -1) {
+      let start = index;
+      let end = index;
+      while (!tokens[start].phrase.first) start--;
+      while (!tokens[end].phrase.last) end++;
+      activeRange = { start, end };
+      markActive();
+    }
+    const phraseStatus = { in_database: true, is_due: phrase.is_due, card_id: phrase.card_id, card_word: phrase.card_word, phrase: null };
+    showWord(normalizePhrase(phrase.card_word), phraseStatus, view);
+  });
+  link.replaceChildren(`“${word}” is part of your saved phrase `, btn);
 }
 
 function closePanel() {
   panel.hidden = true;
   document.body.classList.remove("panel-open");
-  output.querySelector(".word.active")?.classList.remove("active");
-  activeIndex = null;
+  activeRange = null;
+  markActive();
+  stopAudio();
   view = null;
+}
+
+// ---- Audio ----
+
+$("#panel-audio").addEventListener("click", () => {
+  if (!view) return;
+  const btn = $("#panel-audio");
+  stopAudio();
+  player.src = `/api/tts/fr?text=${encodeURIComponent(view.spoken)}`;
+  btn.classList.add("playing");
+  const done = () => btn.classList.remove("playing");
+  player.onended = player.onerror = player.onpause = done;
+  player.play().catch(done);
+});
+
+function stopAudio() {
+  player.pause();
+  $("#panel-audio").classList.remove("playing");
 }
 
 $("#panel-close").addEventListener("click", closePanel);
@@ -525,7 +723,9 @@ $("#panel-back").addEventListener("click", async () => {
   showWord(from.word, status, from.from);
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !panel.hidden) closePanel();
+  if (e.key !== "Escape") return;
+  if (phraseMode) setPhraseMode(false);
+  else if (!panel.hidden) closePanel();
 });
 
 function updatePanelStatus(status, word) {
@@ -538,7 +738,7 @@ function updatePanelStatus(status, word) {
   const note = $("#saved-note");
   note.hidden = !status.in_database;
   note.replaceChildren(
-    viaForm ? "This is a form of your card " : "This word is in your cards",
+    viaForm ? "This is a form of your card " : `This ${word.includes(" ") ? "phrase" : "word"} is in your cards`,
     ...(viaForm ? [el("strong", { lang: "fr", textContent: status.card_word })] : []),
     status.is_due ? (viaForm ? ", which is due for review." : " and due for review.") : ".",
   );
@@ -551,6 +751,7 @@ function renderLookup(result) {
   // No article on inflected forms: "une maisons" would be wrong.
   if (result.gender && result.definition) {
     $("#panel-word").replaceChildren(el("span", { className: "article", textContent: `${ARTICLES[result.gender]} ` }), word);
+    if (result.gender !== "mf") view.spoken = `${ARTICLES[result.gender]} ${word}`; // hear the gender too
   }
 
   if (result.error) {
