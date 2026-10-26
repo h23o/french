@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String
+from sqlalchemy import JSON, DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base, utcnow
@@ -13,6 +13,11 @@ class Card(Base):
     word: Mapped[str] = mapped_column(String, nullable=False, index=True)
     translation: Mapped[str] = mapped_column(String, nullable=False)
     example_sentence: Mapped[str | None] = mapped_column(String, nullable=True)
+    gender: Mapped[str | None] = mapped_column(String, nullable=True)  # "m", "f", "mf" for nouns
+
+    # Inflected forms from the dictionary ("maisons", "vais"...) so the reader can match them.
+    # NULL means not fetched yet; [] means the dictionary had none.
+    forms: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
 
     # SM-2 state
     repetitions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

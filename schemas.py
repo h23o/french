@@ -1,7 +1,12 @@
 from datetime import datetime, timezone
+from typing import Literal
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+
+# Noun gender: masculine, feminine, or either ("un/une élève").
+Gender = Literal["m", "f", "mf"]
+INDEFINITE_ARTICLES = {"m": "un", "f": "une"}
 
 
 class CardCreate(BaseModel):
@@ -10,6 +15,8 @@ class CardCreate(BaseModel):
     word: str = Field(min_length=1)
     translation: str = Field(min_length=1)
     example_sentence: str | None = None
+    # Omit to take the dictionary's gender; send null to save explicitly without one.
+    gender: Gender | None = None
 
 
 class CardUpdate(BaseModel):
@@ -20,6 +27,7 @@ class CardUpdate(BaseModel):
     word: str | None = Field(default=None, min_length=1)
     translation: str | None = Field(default=None, min_length=1)
     example_sentence: str | None = None
+    gender: Gender | None = None
 
     @field_validator("word", "translation")
     @classmethod
@@ -41,6 +49,7 @@ class CardResponse(BaseModel):
     word: str
     translation: str
     example_sentence: str | None
+    gender: Gender | None
     repetitions: int
     interval: int
     easiness: float
@@ -56,7 +65,10 @@ class CardResponse(BaseModel):
     @computed_field
     @property
     def audio_url(self) -> str:
-        return f"/api/tts/fr?text={quote(self.word)}"
+        # Say nouns with their article ("une maison") so the gender is heard too.
+        article = INDEFINITE_ARTICLES.get(self.gender or "")
+        spoken = f"{article} {self.word}" if article else self.word
+        return f"/api/tts/fr?text={quote(spoken)}"
 
 
 class ProcessTextRequest(BaseModel):
@@ -68,6 +80,7 @@ class TokenResponse(BaseModel):
     normalized: str
     in_database: bool
     card_id: int | None
+    card_word: str | None  # the saved word that matched; differs from the token for forms ("maisons" -> "maison")
     is_due: bool
 
 
@@ -82,9 +95,17 @@ class ExampleSentence(BaseModel):
     tatoeba_id: int
 
 
+class BaseForm(BaseModel):
+    word: str  # "beau"
+    description: str  # "feminine singular"
+    part_of_speech: str
+
+
 class LookupResponse(BaseModel):
     word: str
     part_of_speech: str | None  # of the primary (first) meaning
-    definition: str | None  # primary definition
+    definition: str | None  # primary definition; null when the word is only an inflection
+    gender: Gender | None  # for nouns
+    base_forms: list[BaseForm]  # what this word is an inflection of, e.g. suis -> être
     meanings: list[Meaning]
     examples: list[ExampleSentence]

@@ -1,3 +1,4 @@
+import asyncio
 import pathlib
 from contextlib import asynccontextmanager
 
@@ -9,16 +10,21 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from app.services import tts_cache
-from app.services.external_api import ExternalAPIError, lookup_word
+from app.services.enrichment import apply_word_info, enrich_missing_cards
+from app.services.external_api import ExternalAPIError, fetch_word_info, lookup_word
 from app.services.text_processor import process_text
-from database import Base, engine, get_db, utcnow
+from database import Base, add_missing_columns, engine, get_db, utcnow
 from srs import calculate_sm2
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    add_missing_columns()
+    # Fetch forms/gender for cards saved before that existed, without delaying startup.
+    backfill = asyncio.create_task(enrich_missing_cards())
     yield
+    backfill.cancel()
 
 
 app = FastAPI(title="French Vocabulary SRS", lifespan=lifespan)
@@ -42,8 +48,12 @@ def cards_page():
 
 
 @app.post("/cards/", response_model=schemas.CardResponse, status_code=201)
-def create_card(card: schemas.CardCreate, db: Session = Depends(get_db)):
+async def create_card(card: schemas.CardCreate, db: Session = Depends(get_db)):
     db_card = models.Card(**card.model_dump())
+    # Fetch inflected forms now so the reader matches "maisons" as soon as "maison" is saved.
+    # If the dictionary is unreachable the card is still saved and forms are retried at startup.
+    info = await fetch_word_info(db_card.word)
+    apply_word_info(db_card, info, fill_gender="gender" not in card.model_fields_set)
     db.add(db_card)
     db.commit()
     db.refresh(db_card)
@@ -57,7 +67,7 @@ def list_cards(db: Session = Depends(get_db)):
 
 
 @app.patch("/cards/{card_id}", response_model=schemas.CardResponse)
-def update_card(card_id: int, changes: schemas.CardUpdate, db: Session = Depends(get_db)):
+async def update_card(card_id: int, changes: schemas.CardUpdate, db: Session = Depends(get_db)):
     card = db.get(models.Card, card_id)
     if card is None:
         raise HTTPException(status_code=404, detail="Card not found")
@@ -65,8 +75,13 @@ def update_card(card_id: int, changes: schemas.CardUpdate, db: Session = Depends
     updates = changes.model_dump(exclude_unset=True)
     if "example_sentence" in updates:
         updates["example_sentence"] = updates["example_sentence"] or None  # "" clears it
+    word_changed = "word" in updates and updates["word"] != card.word
     for field, value in updates.items():
         setattr(card, field, value)
+    if word_changed:
+        # The old forms belong to the old word; keep whatever gender the user has set.
+        card.forms = None
+        apply_word_info(card, await fetch_word_info(card.word), fill_gender=False)
     db.commit()
     db.refresh(card)
     return card

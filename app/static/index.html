@@ -74,7 +74,7 @@
     border-radius: 12px;
     padding: 16px;
   }
-  textarea, input {
+  textarea, input, select {
     width: 100%;
     font: inherit;
     font-size: 16px; /* avoids iOS zoom on focus */
@@ -84,7 +84,7 @@
     border-radius: 8px;
     padding: 10px 12px;
   }
-  textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   #text { min-height: 160px; resize: vertical; }
 
   .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
@@ -217,7 +217,49 @@
   #save-form { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 16px; display: grid; gap: 10px; }
   #save-form[hidden] { display: none; }
   #save-form label { display: grid; gap: 4px; font-size: .875rem; font-weight: 600; }
-  #save-form input, #save-form textarea { font-weight: 400; } /* don't inherit the bold label */
+  #save-form input, #save-form textarea, #save-form select { font-weight: 400; } /* don't inherit the bold label */
+
+  .article { color: var(--muted); font-weight: 400; }
+  .back-btn {
+    font: inherit;
+    font-size: .875rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    padding: 0;
+    margin-bottom: 4px;
+    cursor: pointer;
+  }
+  .back-btn:hover { text-decoration: underline; }
+  .base-forms {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--known-bg);
+    color: var(--known-text);
+    display: grid;
+    gap: 6px;
+  }
+  .base-title { margin: 0; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .base-form {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: var(--surface);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .base-form:hover { border-color: var(--accent); }
+  .base-word { font: 600 1.125rem Georgia, serif; color: var(--text); }
+  .base-desc { flex: 1; font-size: .8125rem; color: var(--muted); }
+  .base-go { color: var(--accent); font-weight: 600; }
   #save-form textarea { min-height: 64px; resize: vertical; }
   #saved-note { border-top: 1px solid var(--border); margin: 20px 0 0; padding-top: 16px; }
 </style>
@@ -256,7 +298,8 @@
 <aside id="panel" class="panel" hidden aria-labelledby="panel-word">
   <header class="panel-head">
     <div>
-      <h2 id="panel-word"></h2>
+      <button id="panel-back" class="back-btn" type="button" hidden></button>
+      <h2 id="panel-word" lang="fr"></h2>
       <span id="panel-badge" class="badge"></span>
     </div>
     <button id="panel-close" class="icon-btn" type="button" aria-label="Close">×</button>
@@ -266,6 +309,14 @@
     <form id="save-form" hidden>
       <label>Translation
         <input id="save-translation" required autocomplete="off">
+      </label>
+      <label>Gender
+        <select id="save-gender">
+          <option value="">— (not a noun)</option>
+          <option value="m">masculine · un</option>
+          <option value="f">feminine · une</option>
+          <option value="mf">either · un/une</option>
+        </select>
       </label>
       <label>Example sentence
         <textarea id="save-example" placeholder="Optional — tap an example above to use it"></textarea>
@@ -372,6 +423,7 @@ function render() {
     const start = search.indexOf(tok.token, cursor);
     const btn = el("button", { type: "button", className: `word ${tokenState(tok)}` });
     btn.dataset.index = i;
+    if (tok.card_word && tok.card_word.toLowerCase() !== tok.normalized) btn.title = `Form of your card “${tok.card_word}”`;
     if (i === activeIndex) btn.classList.add("active");
     if (start === -1) {
       btn.textContent = tok.token;
@@ -399,33 +451,61 @@ output.addEventListener("click", (e) => {
 });
 
 // ---- Lookup panel ----
+// The panel shows one word at a time: the clicked token, or a base form reached
+// from it ("belle" -> "beau"). `from` remembers the previous view for the back button.
 
-async function openPanel(index) {
+const ARTICLES = { m: "un", f: "une", mf: "un/une" };
+let view = null; // { word, status: {in_database, is_due, card_word}, from }
+
+function openPanel(index) {
   output.querySelector(".word.active")?.classList.remove("active");
   output.querySelector(`[data-index="${index}"]`)?.classList.add("active");
   activeIndex = index;
+  showWord(tokens[index].normalized, tokens[index], null);
+}
 
-  const tok = tokens[index];
-  $("#panel-word").textContent = tok.normalized;
-  updatePanelStatus(tok);
+async function showWord(word, status, from) {
+  const current = (view = { word, status, from });
+  $("#panel-word").replaceChildren(word);
+  const back = $("#panel-back");
+  back.hidden = !from;
+  if (from) back.textContent = `← ${from.word}`;
+  updatePanelStatus(status, word);
   lookupBox.replaceChildren(el("p", { className: "hint", textContent: "Looking up…" }));
   saveForm.hidden = true;
   $("#save-error").hidden = true;
   panel.hidden = false;
   document.body.classList.add("panel-open");
 
-  let result = lookupCache.get(tok.normalized);
+  let result = lookupCache.get(word);
   if (!result) {
     try {
-      result = await api(`/api/lookup/${encodeURIComponent(tok.normalized)}`);
-      lookupCache.set(tok.normalized, result);
+      result = await api(`/api/lookup/${encodeURIComponent(word)}`);
+      lookupCache.set(word, result);
     } catch (err) {
       result = { error: err };
-      if (err.status === 404) lookupCache.set(tok.normalized, result); // don't cache outages
+      if (err.status === 404) lookupCache.set(word, result); // don't cache outages
     }
   }
-  if (activeIndex !== index) return; // another word was clicked meanwhile
-  renderLookup(tok, result);
+  if (view !== current) return; // another word was opened meanwhile
+  renderLookup(result);
+}
+
+// Card status for a word that isn't a token in the text (a base form).
+async function wordStatus(word) {
+  const [tok] = await api("/api/process-text", { method: "POST", body: JSON.stringify({ text: word }) });
+  return tok?.normalized === word ? tok : { in_database: false, is_due: false, card_word: null };
+}
+
+async function openBaseForm(word) {
+  const from = view;
+  let status;
+  try {
+    status = await wordStatus(word);
+  } catch {
+    status = { in_database: false, is_due: false, card_word: null };
+  }
+  if (view === from) showWord(word, status, from);
 }
 
 function closePanel() {
@@ -433,28 +513,45 @@ function closePanel() {
   document.body.classList.remove("panel-open");
   output.querySelector(".word.active")?.classList.remove("active");
   activeIndex = null;
+  view = null;
 }
 
 $("#panel-close").addEventListener("click", closePanel);
+$("#panel-back").addEventListener("click", async () => {
+  const from = view?.from;
+  if (!from) return;
+  // Re-check status: saving the base form may have made this word a known form.
+  const status = await wordStatus(from.word).catch(() => from.status);
+  showWord(from.word, status, from.from);
+});
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !panel.hidden) closePanel();
 });
 
-function updatePanelStatus(tok) {
+function updatePanelStatus(status, word) {
   const badge = $("#panel-badge");
-  const state = tokenState(tok);
+  const state = tokenState(status);
   badge.className = `badge ${state}`;
   badge.textContent = { due: "Due for review", known: "In your cards", "": "New word" }[state];
 
+  const viaForm = status.card_word && status.card_word.toLowerCase() !== word;
   const note = $("#saved-note");
-  note.hidden = !tok.in_database;
-  note.textContent = tok.is_due
-    ? "This word is in your cards and due for review."
-    : "This word is already in your cards.";
+  note.hidden = !status.in_database;
+  note.replaceChildren(
+    viaForm ? "This is a form of your card " : "This word is in your cards",
+    ...(viaForm ? [el("strong", { lang: "fr", textContent: status.card_word })] : []),
+    status.is_due ? (viaForm ? ", which is due for review." : " and due for review.") : ".",
+  );
 }
 
-function renderLookup(tok, result) {
+function renderLookup(result) {
+  const { word, status } = view;
   const parts = [];
+
+  // No article on inflected forms: "une maisons" would be wrong.
+  if (result.gender && result.definition) {
+    $("#panel-word").replaceChildren(el("span", { className: "article", textContent: `${ARTICLES[result.gender]} ` }), word);
+  }
 
   if (result.error) {
     parts.push(el("p", {
@@ -464,6 +561,20 @@ function renderLookup(tok, result) {
         : `Couldn't reach the dictionary: ${result.error.message}`,
     }));
   } else {
+    if (result.base_forms.length) {
+      parts.push(el("div", { className: "base-forms" },
+        el("p", { className: "base-title", textContent: result.definition ? "Also a form of" : "Form of" }),
+        ...result.base_forms.map((base) => {
+          const btn = el("button", { type: "button", className: "base-form", title: `Look up ${base.word}` },
+            el("span", { className: "base-word", lang: "fr", textContent: base.word }),
+            el("span", { className: "base-desc", textContent: base.description }),
+            el("span", { className: "base-go", textContent: "→", ariaHidden: "true" }),
+          );
+          btn.addEventListener("click", () => openBaseForm(base.word));
+          return btn;
+        }),
+      ));
+    }
     for (const meaning of result.meanings) {
       parts.push(
         el("h3", { textContent: meaning.part_of_speech }),
@@ -485,7 +596,7 @@ function renderLookup(tok, result) {
     }
     parts.push(el("p", { className: "credits" },
       "Definitions: ",
-      el("a", { href: `https://en.wiktionary.org/wiki/${encodeURIComponent(tok.normalized)}`, target: "_blank", rel: "noopener", textContent: "Wiktionary" }),
+      el("a", { href: `https://en.wiktionary.org/wiki/${encodeURIComponent(word)}`, target: "_blank", rel: "noopener", textContent: "Wiktionary" }),
       " (CC BY-SA). Examples: ",
       el("a", { href: "https://tatoeba.org", target: "_blank", rel: "noopener", textContent: "Tatoeba" }),
       " (CC BY).",
@@ -493,11 +604,17 @@ function renderLookup(tok, result) {
   }
   lookupBox.replaceChildren(...parts);
 
-  if (!tok.in_database) {
-    $("#save-translation").value = result.definition ?? "";
+  if (!status.in_database) {
+    const translation = $("#save-translation");
+    translation.value = result.definition ?? "";
+    // An inflected form ("belle") usually makes a worse card than its base form ("beau").
+    const base = !result.definition && result.base_forms?.[0];
+    translation.placeholder = base ? `Tip: save “${base.word}” instead (above)` : "";
+    $("#save-gender").value = result.gender ?? "";
     $("#save-example").value = "";
     const first = lookupBox.querySelector(".example");
     if (first) selectExample(first, result.examples[0].french);
+    $("#save-btn").textContent = `Save “${word}” to Cards`;
     saveForm.hidden = false;
   }
 }
@@ -510,9 +627,9 @@ function selectExample(btn, french) {
 
 saveForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const index = activeIndex;
-  const tok = tokens[index];
+  const saving = view;
   const btn = $("#save-btn");
+  const label = btn.textContent;
   const error = $("#save-error");
   btn.disabled = true;
   btn.textContent = "Saving…";
@@ -521,24 +638,27 @@ saveForm.addEventListener("submit", async (e) => {
     await api("/cards/", {
       method: "POST",
       body: JSON.stringify({
-        word: tok.normalized,
+        word: saving.word,
         translation: $("#save-translation").value.trim(),
         example_sentence: $("#save-example").value.trim() || null,
+        gender: $("#save-gender").value || null,
       }),
     });
-    await loadTokens(currentText); // refresh highlights for every occurrence
+    // Refresh highlights: every occurrence, plus any inflected forms of the new card.
+    await loadTokens(currentText);
     refreshDueCount();
-    if (activeIndex === index) {
+    if (view === saving) {
+      saving.status = await wordStatus(saving.word).catch(() => saving.status);
       saveForm.hidden = true;
-      updatePanelStatus(tokens[index]);
-      $("#saved-note").textContent = "Saved to your cards.";
+      updatePanelStatus(saving.status, saving.word);
+      $("#saved-note").textContent = `Saved “${saving.word}” to your cards.`;
     }
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Save to Cards";
+    btn.textContent = label;
   }
 });
 </script>

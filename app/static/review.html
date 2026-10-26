@@ -104,6 +104,7 @@
 
   .word-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
   #word { font: 600 clamp(2rem, 9vw, 3rem)/1.15 Georgia, "Iowan Old Style", serif; margin: 0; overflow-wrap: anywhere; }
+  #word .article { color: var(--muted); font-weight: 400; }
 
   .audio-btn {
     width: 44px; height: 44px;
@@ -233,6 +234,7 @@ const flash = $("#flash");
 const player = new Audio();
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const ARTICLES = { m: "un", f: "une", mf: "un/une" };
 
 const SPEAKER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
 $("#play-word").innerHTML = SPEAKER_ICON;
@@ -294,7 +296,11 @@ function showNext() {
 
   current = queue[0];
   revealed = false;
-  $("#word").textContent = current.word;
+  const word = $("#word");
+  word.textContent = current.word;
+  if (ARTICLES[current.gender]) {
+    word.prepend(Object.assign(document.createElement("span"), { className: "article", textContent: `${ARTICLES[current.gender]} ` }));
+  }
   $("#translation").textContent = current.translation;
   $("#example").textContent = current.example_sentence ?? "";
   $("#example-row").hidden = !current.example_sentence;

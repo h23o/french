@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+
+# Local data: your cards and the generated audio cache
+*.db
+app/static/audio/

@@ -108,6 +108,7 @@
   .item-main { flex: 1; min-width: 0; }
   .item-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .word { font: 600 1.3rem/1.3 Georgia, "Iowan Old Style", serif; overflow-wrap: anywhere; }
+  .word .article { color: var(--muted); font-weight: 400; }
   .translation { margin-top: 2px; overflow-wrap: anywhere; }
   .example { margin-top: 4px; color: var(--muted); font: italic .975rem/1.45 Georgia, serif; overflow-wrap: anywhere; }
   .meta { margin-top: 6px; color: var(--muted); font-size: .8125rem; }
@@ -147,7 +148,7 @@
 
   .edit-form { display: grid; gap: 10px; width: 100%; }
   .edit-form label { display: grid; gap: 4px; font-size: .8125rem; font-weight: 600; color: var(--muted); }
-  .edit-form input, .edit-form textarea { width: 100%; font-weight: 400; }
+  .edit-form input, .edit-form textarea, .edit-form select { width: 100%; font-weight: 400; }
   .edit-form textarea { min-height: 64px; resize: vertical; }
   .edit-form .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .error { color: var(--danger); font-size: .875rem; margin: 0; }
@@ -199,6 +200,7 @@ const player = new Audio();
 const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 const shortDate = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+const ARTICLES = { m: "un", f: "une", mf: "un/une" };
 const SPEAKER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
 
 let cards = [];
@@ -305,7 +307,10 @@ function fillView(li, card) {
   const due = isDue(card);
   const main = el("div", { className: "item-main" },
     el("div", { className: "item-head" },
-      el("span", { className: "word", lang: "fr", textContent: card.word }),
+      el("span", { className: "word", lang: "fr" },
+        ...(ARTICLES[card.gender] ? [el("span", { className: "article", textContent: `${ARTICLES[card.gender]} ` })] : []),
+        card.word,
+      ),
       audio,
       el("span", {
         className: `badge ${due ? "due" : ""}`,
@@ -335,6 +340,13 @@ function fillView(li, card) {
 function fillEdit(li, card) {
   const word = el("input", { value: card.word, required: true, autocomplete: "off", lang: "fr" });
   const translation = el("input", { value: card.translation, required: true, autocomplete: "off" });
+  const gender = el("select", {},
+    el("option", { value: "", textContent: "— (not a noun)" }),
+    el("option", { value: "m", textContent: "masculine · un" }),
+    el("option", { value: "f", textContent: "feminine · une" }),
+    el("option", { value: "mf", textContent: "either · un/une" }),
+  );
+  gender.value = card.gender ?? "";
   const example = el("textarea", { value: card.example_sentence ?? "", lang: "fr" });
   const save = el("button", { type: "submit", className: "btn primary", textContent: "Save" });
   const cancel = el("button", { type: "button", className: "btn", textContent: "Cancel" });
@@ -343,6 +355,7 @@ function fillEdit(li, card) {
   const form = el("form", { className: "edit-form" },
     el("label", {}, "Word", word),
     el("label", {}, "Translation", translation),
+    el("label", {}, "Gender", gender),
     el("label", {}, "Example sentence", example),
     el("div", { className: "row" }, save, cancel, error),
   );
@@ -360,6 +373,7 @@ function fillEdit(li, card) {
         body: JSON.stringify({
           word: word.value,
           translation: translation.value,
+          gender: gender.value || null,
           example_sentence: example.value.trim() || null,
         }),
       });

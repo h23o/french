@@ -44,23 +44,31 @@ def process_text(db: Session, text: str) -> list[dict]:
         return []
 
     # SQLite's lower() only folds ASCII, so match in Python to handle "École" == "école".
+    # A card matches its own word first, then any of its inflected forms ("maisons", "vais").
     # Ordered by next_review so duplicate cards resolve to the most overdue one.
-    cards: dict[str, tuple[int, bool]] = {}
+    exact: dict[str, tuple[int, str, bool]] = {}
+    by_form: dict[str, tuple[int, str, bool]] = {}
     now = utcnow()
-    rows = db.execute(select(Card.id, Card.word, Card.next_review).order_by(Card.next_review, Card.id))
-    for card_id, word, next_review in rows:
-        cards.setdefault(normalize_word(word), (card_id, next_review <= now))
+    rows = db.execute(
+        select(Card.id, Card.word, Card.next_review, Card.forms).order_by(Card.next_review, Card.id)
+    )
+    for card_id, word, next_review, forms in rows:
+        match = (card_id, word, next_review <= now)
+        exact.setdefault(normalize_word(word), match)
+        for form in forms or []:
+            by_form.setdefault(form, match)
 
     result = []
     for token in tokens:
         normalized = normalize_word(token)
-        card_id, is_due = cards.get(normalized, (None, False))
+        card_id, card_word, is_due = exact.get(normalized) or by_form.get(normalized) or (None, None, False)
         result.append(
             {
                 "token": token,
                 "normalized": normalized,
                 "in_database": card_id is not None,
                 "card_id": card_id,
+                "card_word": card_word,
                 "is_due": is_due,
             }
         )
