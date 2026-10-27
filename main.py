@@ -1,10 +1,12 @@
 import asyncio
 import pathlib
 from contextlib import asynccontextmanager
+from datetime import timezone
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -38,6 +40,20 @@ STATIC_DIR = pathlib.Path(__file__).parent / "app" / "static"
 @app.get("/", include_in_schema=False)
 def reader():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/manifest.json", include_in_schema=False)
+def manifest():
+    return FileResponse(STATIC_DIR / "manifest.json", media_type="application/manifest+json")
+
+
+# Served from the root so the worker's scope covers every page.
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    return FileResponse(STATIC_DIR / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
+app.mount("/icons", StaticFiles(directory=STATIC_DIR / "icons"), name="icons")
 
 
 @app.get("/review", include_in_schema=False)
@@ -120,8 +136,19 @@ def review_card(card_id: int, review: schemas.CardReview, db: Session = Depends(
     if card is None:
         raise HTTPException(status_code=404, detail="Card not found")
 
+    reviewed_at = None
+    if review.reviewed_at is not None:
+        reviewed_at = review.reviewed_at
+        if reviewed_at.tzinfo is not None:
+            reviewed_at = reviewed_at.astimezone(timezone.utc).replace(tzinfo=None)
+        reviewed_at = min(reviewed_at, utcnow())
+        # A queued review that was already applied (a resend), or the card was reviewed
+        # again since: keep the result that's there.
+        if card.next_review > reviewed_at:
+            return card
+
     card.repetitions, card.interval, card.easiness, card.next_review = calculate_sm2(
-        review.quality, card.repetitions, card.interval, card.easiness
+        review.quality, card.repetitions, card.interval, card.easiness, now=reviewed_at
     )
     db.commit()
     db.refresh(card)

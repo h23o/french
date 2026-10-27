@@ -45,6 +45,8 @@ class CardUpdate(BaseModel):
 
 class CardReview(BaseModel):
     quality: int = Field(ge=0, le=5)
+    # When the rating was given, for reviews queued offline and sent later.
+    reviewed_at: datetime | None = None
 
 
 class Cloze(BaseModel):

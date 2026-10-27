@@ -3,6 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="French Reader">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141416" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});</script>
 <title>Review</title>
 <style>
   :root {
@@ -80,6 +90,15 @@
   .toggles label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
   .toggles label.disabled { opacity: .5; cursor: default; }
   .toggles input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+
+  .sync-status {
+    margin: -4px 0 16px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: .875rem;
+    background: var(--hard-bg);
+    color: var(--hard-text);
+  }
 
   .btn {
     font: inherit;
@@ -266,6 +285,7 @@
       </label>
     </div>
   </div>
+  <p id="sync-status" class="sync-status" role="status" hidden></p>
 
   <section id="loading" class="panel"><p>Loading cards…</p></section>
 
@@ -317,19 +337,23 @@ const SPEAKER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 
 // ---- Settings (remembered per browser) ----
 
-const settings = { direction: "fr-en", typed: false, repeat: true };
-try {
-  Object.assign(settings, JSON.parse(localStorage.getItem("review-settings") ?? "{}"));
-} catch {
-  /* storage unavailable: use defaults */
-}
-function saveSettings() {
+function load(key, fallback) {
   try {
-    localStorage.setItem("review-settings", JSON.stringify(settings));
+    return JSON.parse(localStorage.getItem(key)) ?? fallback;
   } catch {
-    /* ignore */
+    return fallback; // storage unavailable
   }
 }
+function store(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable or full */
+  }
+}
+
+const settings = { direction: "fr-en", typed: false, repeat: true, ...load("review-settings", {}) };
+const saveSettings = () => store("review-settings", settings);
 // The mode used for a card: "Fill in" needs an example sentence containing the word,
 // so cards without one are asked EN → FR instead.
 const modeFor = (c) => (settings.direction === "cloze" && !c.cloze ? "en-fr" : settings.direction);
@@ -383,11 +407,24 @@ let reviewed = 0;
 let lapses = 0;
 let practiced = 0;
 
+// When the laptop can't be reached, a request can hang for a long time before failing.
+const REQUEST_TIMEOUT_MS = 5000;
+const unreachable = () => Object.assign(new Error("Can't reach the laptop"), { offline: true });
+
+// Errors carry .offline when the laptop couldn't be reached (rather than refusing the request).
 async function api(path, options = {}) {
-  const resp = await fetch(path, {
-    ...options,
-    headers: options.body ? { "Content-Type": "application/json" } : undefined,
-  });
+  let resp;
+  try {
+    resp = await fetch(path, {
+      ...options,
+      headers: options.body ? { "Content-Type": "application/json" } : undefined,
+      signal: AbortSignal.timeout?.(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    throw unreachable();
+  }
+  // Gateway errors: a proxy in front of the app is up but the app isn't.
+  if ([502, 503, 504].includes(resp.status)) throw unreachable();
   const body = await resp.json().catch(() => null);
   if (!resp.ok) {
     const detail = typeof body?.detail === "string" ? body.detail : `Request failed (${resp.status})`;
@@ -417,11 +454,104 @@ function updateProgress() {
   $("#progress-bar").style.width = total ? `${(done / total) * 100}%` : "0";
 }
 
+// ---- Offline ----
+// The due list is kept in localStorage so a session can run with the laptop out of
+// reach. Ratings given then are queued, also in localStorage, and sent once it's back.
+
+const DUE_KEY = "review-due-cards";
+const OUTBOX_KEY = "review-offline-queue"; // [{card_id, word, quality, reviewed_at}], oldest first
+const RETRY_MS = 30000;
+
+let offline = false; // the last request couldn't reach the laptop
+let flushing = null;
+
+const outbox = () => load(OUTBOX_KEY, []);
+const forgetDue = (id) => store(DUE_KEY, load(DUE_KEY, []).filter((c) => c.id !== id));
+
+function setOffline(value) {
+  offline = value;
+  updateSyncStatus();
+}
+
+function updateSyncStatus() {
+  const n = outbox().length;
+  const status = $("#sync-status");
+  status.hidden = !n && !offline;
+  const waiting = `${n} rating${n === 1 ? "" : "s"} waiting to sync`;
+  status.textContent = offline
+    ? `Offline: can't reach the laptop. ${n ? `${waiting}; they'll be sent` : "Ratings will be saved here and sent"} when it's back.`
+    : `${waiting}…`;
+}
+
+function queueReview(c, quality) {
+  store(OUTBOX_KEY, [...outbox(), { card_id: c.id, word: c.word, quality, reviewed_at: new Date().toISOString() }]);
+  updateSyncStatus();
+}
+
+// Send queued ratings in order. Stops at the first one the laptop doesn't answer, so
+// the rest keep their order for the next try.
+function flushOutbox() {
+  if (!outbox().length) return Promise.resolve();
+  flushing ??= (async () => {
+    try {
+      for (let review; (review = outbox()[0]); ) {
+        try {
+          await api(`/cards/${review.card_id}/review`, {
+            method: "POST",
+            body: JSON.stringify({ quality: review.quality, reviewed_at: review.reviewed_at }),
+          });
+          setOffline(false);
+        } catch (err) {
+          if (err.offline) return setOffline(true);
+          if (err.status >= 500) return; // server bug: keep it and try again later
+          // Otherwise (card deleted, rating rejected) it can never be applied: drop it.
+        }
+        const sent = (r) => r.card_id === review.card_id && r.reviewed_at === review.reviewed_at;
+        store(OUTBOX_KEY, outbox().filter((r) => !sent(r)));
+      }
+    } finally {
+      flushing = null;
+      updateSyncStatus();
+    }
+  })();
+  return flushing;
+}
+
+// Due cards from the laptop, or the saved list when it can't be reached. Ratings still
+// in the outbox are sent first, and their cards left out either way.
+async function loadDue() {
+  await flushOutbox();
+  let cards = null;
+  // Ratings left in the outbox while offline: the flush just failed, so don't wait again.
+  if (!(offline && outbox().length)) {
+    try {
+      cards = await api("/cards/due");
+      setOffline(false);
+    } catch (err) {
+      if (!err.offline) throw err;
+      setOffline(true);
+    }
+  }
+  cards ??= load(DUE_KEY, null);
+  if (!cards) throw unreachable();
+  const pending = new Set(outbox().map((r) => r.card_id));
+  cards = cards.filter((c) => !pending.has(c.id));
+  store(DUE_KEY, cards);
+  return cards;
+}
+
+// Retry while there's something to send: on a timer, when the phone's connection comes
+// back, and when the app is reopened.
+setInterval(() => document.visibilityState === "visible" && flushOutbox(), RETRY_MS);
+addEventListener("online", () => flushOutbox());
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && flushOutbox());
+
 async function start() {
   show("loading");
   setFlash("");
+  updateSyncStatus();
   try {
-    queue = (await api("/cards/due")).map((c) => ({ card: c, practice: false }));
+    queue = (await loadDue()).map((c) => ({ card: c, practice: false }));
   } catch (err) {
     $("#loading").querySelector("p").textContent = `Couldn't load cards: ${err.message}`;
     return;
@@ -662,23 +792,41 @@ async function rate(quality) {
       if (repeat) queue.push(item);
       setFlash(repeat ? `“${item.card.word}” will come round again.` : `“${item.card.word}” practised.`);
     } else {
-      const updated = await api(`/cards/${item.card.id}/review`, {
-        method: "POST",
-        body: JSON.stringify({ quality }),
-      });
+      // Already known to be offline: queue straight away rather than wait for a timeout.
+      let updated = null;
+      if (!offline) {
+        try {
+          updated = await api(`/cards/${item.card.id}/review`, {
+            method: "POST",
+            body: JSON.stringify({ quality }),
+          });
+        } catch (err) {
+          if (!err.offline) throw err;
+          setOffline(true);
+        }
+      }
+      if (!updated) queueReview(item.card, quality);
+      flushOutbox(); // after a success the laptop is back; when offline, see if it is now
       queue.shift();
+      forgetDue(item.card.id);
       done++;
       reviewed++;
       if (quality < 3) lapses++;
-      if (repeat) queue.push({ card: updated, practice: true });
-      const days = updated.interval === 1 ? "tomorrow" : `in ${updated.interval} days`;
-      setFlash(`“${updated.word}” comes back ${days}${repeat ? " — and once more for practice now" : ""}.`);
+      if (repeat) queue.push({ card: updated ?? item.card, practice: true });
+      const again = repeat ? " — and once more for practice now" : "";
+      if (updated) {
+        const days = updated.interval === 1 ? "tomorrow" : `in ${updated.interval} days`;
+        setFlash(`“${updated.word}” comes back ${days}${again}.`);
+      } else {
+        setFlash(`“${item.card.word}” rated offline; it'll sync when the laptop is back${again}.`);
+      }
     }
     await leave();
   } catch (err) {
     if (err.status === 404) {
       // Deleted elsewhere: drop it and move on.
       queue.shift();
+      forgetDue(item.card.id);
       setFlash("That card no longer exists — skipped.", true);
       await leave();
     } else {
@@ -701,7 +849,7 @@ async function finish() {
   // Cards can come due while you review, so check once more before finishing.
   if (reviewed) {
     try {
-      const more = await api("/cards/due");
+      const more = await loadDue();
       if (more.length) {
         queue = more.map((c) => ({ card: c, practice: false }));
         return showNext();
