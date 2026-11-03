@@ -17,7 +17,7 @@ from app.services.enrichment import apply_card_data, enrich_missing_cards, fetch
 from app.services.external_api import ExternalAPIError, fetch_conjugation, lookup_word
 from app.services.library import summarize
 from app.services.text_processor import CardIndex, process_text
-from app.services.word_bank import bank_phrases, bank_words
+from app.services.word_bank import bank_phrases, bank_words, level_words
 from database import Base, add_missing_columns, engine, get_db, utcnow
 from srs import calculate_sm2
 
@@ -210,6 +210,19 @@ def get_bank_words(
     db: Session = Depends(get_db),
 ):
     return bank_words(db, offset=offset, limit=limit, q=q, pos=pos, hide_known=hide_known)
+
+
+@app.get("/api/bank/levels", response_model=schemas.LevelWordsResponse)
+def get_level_words(
+    level: schemas.Level = "A1",
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    q: str = "",
+    pos: Literal["noun", "verb", "adjective", "adverb", "other"] | None = None,
+    hide_known: bool = False,
+    db: Session = Depends(get_db),
+):
+    return level_words(db, level=level, offset=offset, limit=limit, q=q, pos=pos, hide_known=hide_known)
 
 
 @app.get("/api/bank/phrases", response_model=list[schemas.PhraseCategory])

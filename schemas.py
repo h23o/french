@@ -216,6 +216,29 @@ class BankWordsResponse(BaseModel):
     coverage: list[Coverage]
 
 
+Level = Literal["A1", "A2", "B1", "B2", "C1", "C2"]
+
+
+class LevelWord(CardStatus):
+    rank: int  # within its level, most frequent in textbooks first
+    word: str
+    pos: list[str]
+    gender: Gender | None
+    level: Level
+
+
+class LevelCoverage(BaseModel):
+    level: Level
+    total: int  # words at this level…
+    known: int  # …of which this many are in your cards
+
+
+class LevelWordsResponse(BaseModel):
+    total: int  # matching the filters
+    items: list[LevelWord]
+    coverage: list[LevelCoverage]
+
+
 class BankPhrase(CardStatus):
     text: str
     translation: str

@@ -173,6 +173,13 @@
   .band-label { font-size: .6875rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
   .band-count { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   .coverage-note { margin: -8px 0 16px; }
+  .levels { grid-template-columns: repeat(6, 1fr); }
+  .levels .band { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .levels .band:hover { border-color: var(--accent); }
+  .levels .band[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .levels .band:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .levels .band-label { color: var(--text); font-size: .875rem; }
+  .band-total { font-size: .75rem; font-weight: 400; color: var(--muted); }
   .controls { display: grid; gap: 10px; margin-bottom: 12px; }
   .controls-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
   .segmented { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
@@ -208,6 +215,8 @@
   .phrase-fr { font: 600 1.05rem Georgia, serif; }
 
   @media (max-width: 520px) {
+    .tabs button { padding-inline: 4px; }
+    .levels { grid-template-columns: repeat(3, 1fr); }
     .rank { width: 2.6em; }
     .add-form { padding-left: 0; }
   }
@@ -224,6 +233,7 @@
   <nav class="tabs" role="tablist">
     <button type="button" role="tab" data-tab="texts" aria-selected="true">My texts</button>
     <button type="button" role="tab" data-tab="words" aria-selected="false">Common words</button>
+    <button type="button" role="tab" data-tab="levels" aria-selected="false">Levels</button>
     <button type="button" role="tab" data-tab="phrases" aria-selected="false">Phrases</button>
   </nav>
 
@@ -241,7 +251,7 @@
     <div id="coverage" class="coverage" aria-label="How many of the most common words you know"></div>
     <p class="hint coverage-note">How many of the most common words are in your cards.</p>
     <div class="controls">
-      <input id="word-search" type="search" placeholder="Search the 5,000 most common words…" aria-label="Search words" autocomplete="off">
+      <input class="word-search" type="search" placeholder="Search the 5,000 most common words…" aria-label="Search words" autocomplete="off">
       <div class="controls-row">
         <div class="segmented" role="group" aria-label="Part of speech">
           <button type="button" data-pos="" aria-pressed="true">All</button>
@@ -251,16 +261,42 @@
           <button type="button" data-pos="adverb" aria-pressed="false" title="Adverbs">Adv.</button>
           <button type="button" data-pos="other" aria-pressed="false">Other</button>
         </div>
-        <label class="check"><input id="hide-known" type="checkbox"> Hide words I have</label>
+        <label class="check"><input class="hide-known" type="checkbox"> Hide words I have</label>
       </div>
     </div>
-    <p id="words-status" class="error" hidden></p>
-    <ul id="words" class="rows"></ul>
+    <p class="words-status error" hidden></p>
+    <ul class="words rows"></ul>
     <div class="more">
-      <span id="words-count" class="hint"></span>
-      <button id="words-more" class="btn" type="button" hidden>Show more</button>
+      <span class="words-count hint"></span>
+      <button class="words-more btn" type="button" hidden>Show more</button>
     </div>
     <p class="credits">Ranked by frequency in French films and books: <a href="http://www.lexique.org" target="_blank" rel="noopener">Lexique 3.83</a> (CC BY-SA 4.0). Definitions: Wiktionary; examples: Tatoeba.</p>
+  </section>
+
+  <section id="tab-levels" role="tabpanel" hidden>
+    <div id="level-picker" class="coverage levels" role="group" aria-label="CEFR level"></div>
+    <p class="hint coverage-note">Words by the CEFR level they're taught at, from A1 (beginner) to C2 (mastery), with how many of each level are in your cards.</p>
+    <div class="controls">
+      <input class="word-search" type="search" aria-label="Search words" autocomplete="off">
+      <div class="controls-row">
+        <div class="segmented" role="group" aria-label="Part of speech">
+          <button type="button" data-pos="" aria-pressed="true">All</button>
+          <button type="button" data-pos="noun" aria-pressed="false">Nouns</button>
+          <button type="button" data-pos="verb" aria-pressed="false">Verbs</button>
+          <button type="button" data-pos="adjective" aria-pressed="false" title="Adjectives">Adj.</button>
+          <button type="button" data-pos="adverb" aria-pressed="false" title="Adverbs">Adv.</button>
+          <button type="button" data-pos="other" aria-pressed="false">Other</button>
+        </div>
+        <label class="check"><input class="hide-known" type="checkbox"> Hide words I have</label>
+      </div>
+    </div>
+    <p class="words-status error" hidden></p>
+    <ul class="words rows"></ul>
+    <div class="more">
+      <span class="words-count hint"></span>
+      <button class="words-more btn" type="button" hidden>Show more</button>
+    </div>
+    <p class="credits">Levels from <a href="https://cental.uclouvain.be/cefrlex/flelex/" target="_blank" rel="noopener">FLELex</a> (CC BY-NC-SA 4.0), which counts the words in French-as-a-foreign-language textbooks at each level; within a level, the most frequent come first. Definitions: Wiktionary; examples: Tatoeba.</p>
   </section>
 
   <section id="tab-phrases" role="tabpanel" hidden>
@@ -295,8 +331,8 @@ async function api(path, options = {}) {
   return body;
 }
 
-function showError(id, message) {
-  const node = $(id);
+function showError(target, message) {
+  const node = typeof target === "string" ? $(target) : target;
   node.textContent = message;
   node.hidden = !message;
 }
@@ -338,17 +374,18 @@ async function refreshDueCount() {
   }
 }
 
-// ---- Tabs (#texts / #words / #phrases) ----
+// ---- Tabs (#texts / #words / #levels / #phrases) ----
 
+const TABS = ["texts", "words", "levels", "phrases"];
 const loaded = {};
 function showTab(name) {
-  if (!["texts", "words", "phrases"].includes(name)) name = "texts";
+  if (!TABS.includes(name)) name = "texts";
   document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
-  for (const tab of ["texts", "words", "phrases"]) $(`#tab-${tab}`).hidden = tab !== name;
+  for (const tab of TABS) $(`#tab-${tab}`).hidden = tab !== name;
   if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
   if (!loaded[name]) {
     loaded[name] = true;
-    ({ texts: loadTexts, words: () => loadWords(true), phrases: loadPhrases })[name]();
+    ({ texts: loadTexts, words: () => commonWords.load(true), levels: () => levelWords.load(true), phrases: loadPhrases })[name]();
   }
 }
 document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
@@ -428,55 +465,68 @@ function textItem(t) {
   return li;
 }
 
-// ---- Common words ----
+// ---- Word lists (Common words, Levels) ----
 
 const PAGE = 100;
 const compact = new Intl.NumberFormat("en", { notation: "compact" }); // 1000 -> "1K", fits narrow screens
-const words = { offset: 0, pos: "", request: 0 };
 
-async function loadWords(reset) {
-  const request = ++words.request; // ignore responses to superseded searches
-  if (reset) words.offset = 0;
-  const params = new URLSearchParams({ offset: words.offset, limit: PAGE, q: $("#word-search").value.trim(), hide_known: $("#hide-known").checked });
-  if (words.pos) params.set("pos", words.pos);
-  $("#words-more").disabled = true;
-  let result;
-  try {
-    result = await api(`/api/bank/words?${params}`);
-  } catch (err) {
-    showError("#words-status", `Couldn't load words: ${err.message}`);
-    return;
-  } finally {
-    $("#words-more").disabled = false;
+// The search box, part-of-speech filter, "Hide words I have" and paging in `section`.
+// `params` adds query parameters; `renderCoverage` shows the counts in each response.
+function wordList(section, url, { params = () => ({}), renderCoverage }) {
+  const find = (sel) => section.querySelector(sel);
+  const state = { offset: 0, pos: "", request: 0 };
+
+  async function load(reset) {
+    const request = ++state.request; // ignore responses to superseded searches
+    if (reset) state.offset = 0;
+    const query = new URLSearchParams({ ...params(), offset: state.offset, limit: PAGE, q: find(".word-search").value.trim(), hide_known: find(".hide-known").checked });
+    if (state.pos) query.set("pos", state.pos);
+    find(".words-more").disabled = true;
+    let result;
+    try {
+      result = await api(`${url}?${query}`);
+    } catch (err) {
+      showError(find(".words-status"), `Couldn't load words: ${err.message}`);
+      return;
+    } finally {
+      find(".words-more").disabled = false;
+    }
+    if (request !== state.request) return;
+    showError(find(".words-status"), "");
+    renderCoverage(result.coverage);
+    const rows = result.items.map((item) => wordRow(item, refreshCoverage));
+    if (reset) find(".words").replaceChildren(...rows);
+    else find(".words").append(...rows);
+    state.offset += result.items.length;
+    find(".words-more").hidden = state.offset >= result.total;
+    find(".words-count").textContent = result.total
+      ? `Showing ${state.offset.toLocaleString()} of ${result.total.toLocaleString()}`
+      : "No words match.";
   }
-  if (request !== words.request) return;
-  showError("#words-status", "");
-  renderCoverage(result.coverage);
-  const rows = result.items.map(wordRow);
-  if (reset) $("#words").replaceChildren(...rows);
-  else $("#words").append(...rows);
-  words.offset += result.items.length;
-  $("#words-more").hidden = words.offset >= result.total;
-  $("#words-count").textContent = result.total
-    ? `Showing ${words.offset.toLocaleString()} of ${result.total.toLocaleString()}`
-    : "No words match.";
-}
 
-function renderCoverage(coverage) {
-  $("#coverage").replaceChildren(...coverage.map(({ top, known }) =>
-    el("div", { className: "band" },
-      el("span", { className: "band-label", textContent: `Top ${compact.format(top)}` }),
-      el("span", { className: "band-count", title: `${known} of the ${top} most common words`, textContent: known.toLocaleString() }),
-      el("div", { className: "meter-bar" }, el("div", { style: `width: ${(100 * known) / top}%` })),
-    )));
-}
-
-async function refreshCoverage() {
-  try {
-    renderCoverage((await api("/api/bank/words?limit=1")).coverage);
-  } catch {
-    /* keep the old numbers */
+  async function refreshCoverage() {
+    try {
+      renderCoverage((await api(`${url}?${new URLSearchParams({ ...params(), limit: 1 })}`)).coverage);
+    } catch {
+      /* keep the old numbers */
+    }
   }
+
+  let searchTimer;
+  find(".word-search").addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => load(true), 250);
+  });
+  find(".hide-known").addEventListener("change", () => load(true));
+  find(".words-more").addEventListener("click", () => load(false));
+  section.querySelectorAll("[data-pos]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      state.pos = btn.dataset.pos;
+      section.querySelectorAll("[data-pos]").forEach((b) => b.setAttribute("aria-pressed", b === btn));
+      load(true);
+    }),
+  );
+  return { load };
 }
 
 function spokenForm(word, gender) {
@@ -484,14 +534,14 @@ function spokenForm(word, gender) {
   return article && gender !== "mf" ? `${article} ${word}` : word;
 }
 
-function wordRow(item) {
+function wordRow(item, onAdded) {
   const li = el("li", { className: "row" });
   const article = ARTICLES[item.gender];
   const side = el("div", { className: "row-side" });
   const fill = () => {
     const badge = statusBadge(item);
     const add = el("button", { type: "button", className: "btn", textContent: "+ Add" });
-    add.addEventListener("click", () => openAddForm(item, li, fill));
+    add.addEventListener("click", () => openAddForm(item, li, () => { fill(); onAdded(); }));
     side.replaceChildren(badge ?? add, audioButtons(spokenForm(item.word, item.gender)));
   };
   fill();
@@ -567,7 +617,6 @@ async function openAddForm(item, li, onSaved) {
       Object.assign(item, { in_database: true, is_due: true }); // new cards are due immediately
       form.remove();
       onSaved();
-      refreshCoverage();
       refreshDueCount();
     } catch (err) {
       error.textContent = err.message;
@@ -577,20 +626,57 @@ async function openAddForm(item, li, onSaved) {
   });
 }
 
-let searchTimer;
-$("#word-search").addEventListener("input", () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => loadWords(true), 250);
+// ---- Common words ----
+
+const commonWords = wordList($("#tab-words"), "/api/bank/words", {
+  renderCoverage: (coverage) => $("#coverage").replaceChildren(...coverage.map(({ top, known }) =>
+    el("div", { className: "band" },
+      el("span", { className: "band-label", textContent: `Top ${compact.format(top)}` }),
+      el("span", { className: "band-count", title: `${known} of the ${top} most common words`, textContent: known.toLocaleString() }),
+      el("div", { className: "meter-bar" }, el("div", { style: `width: ${(100 * known) / top}%` })),
+    ))),
 });
-$("#hide-known").addEventListener("change", () => loadWords(true));
-$("#words-more").addEventListener("click", () => loadWords(false));
-document.querySelectorAll("[data-pos]").forEach((btn) =>
+
+// ---- Levels ----
+
+const LEVELS = { A1: "Beginner", A2: "Elementary", B1: "Intermediate", B2: "Upper intermediate", C1: "Advanced", C2: "Mastery" };
+let level = localStorage.getItem("library-level");
+if (!(level in LEVELS)) level = "A1";
+
+const levelButtons = Object.entries(LEVELS).map(([code, name]) => {
+  const btn = el("button", { type: "button", className: "band", title: name },
+    el("span", { className: "band-label", textContent: code }),
+    el("span", { className: "band-count" }),
+    el("div", { className: "meter-bar" }, el("div", { style: "width: 0" })),
+  );
+  btn.dataset.level = code;
   btn.addEventListener("click", () => {
-    words.pos = btn.dataset.pos;
-    document.querySelectorAll("[data-pos]").forEach((b) => b.setAttribute("aria-pressed", b === btn));
-    loadWords(true);
-  }),
-);
+    level = code;
+    localStorage.setItem("library-level", code);
+    showLevel();
+    levelWords.load(true);
+  });
+  return btn;
+});
+$("#level-picker").append(...levelButtons);
+
+function showLevel() {
+  for (const btn of levelButtons) btn.setAttribute("aria-pressed", btn.dataset.level === level);
+  $("#tab-levels .word-search").placeholder = `Search ${level} words…`;
+}
+showLevel();
+
+const levelWords = wordList($("#tab-levels"), "/api/bank/levels", {
+  params: () => ({ level }),
+  renderCoverage: (coverage) => {
+    for (const { level: code, total, known } of coverage) {
+      const btn = levelButtons.find((b) => b.dataset.level === code);
+      btn.title = `${code} · ${LEVELS[code]}: ${known.toLocaleString()} of ${total.toLocaleString()} words in your cards`;
+      btn.querySelector(".band-count").replaceChildren(known.toLocaleString(), el("span", { className: "band-total", textContent: ` / ${compact.format(total)}` }));
+      btn.querySelector(".meter-bar > div").style.width = `${(100 * known) / total}%`;
+    }
+  },
+});
 
 // ---- Phrases ----
 
