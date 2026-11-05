@@ -39,22 +39,28 @@ A self-hosted French vocabulary app: read French text, tap words to look them up
 Requires Python 3.10+.
 
 ```sh
-python -m venv venv
-source venv/bin/activate         # fish: source venv/bin/activate.fish
-pip install -r requirements.txt
-uvicorn main:app --reload
+./france
 ```
 
-Then open http://localhost:8000.
+Then open http://localhost:8000. The first run creates the `venv/` and installs the requirements. Any arguments are passed on to uvicorn. The script doesn't need the venv activated, and it works from any directory.
 
-On first start the app creates `french_app.db` (SQLite) in the working directory. New columns are added to an existing database automatically, so there are no migrations to run.
+To type just `france` from anywhere in fish, add a function that calls the script:
+
+```fish
+function france --description 'Start the French vocabulary app'
+    ~/Projects/french/france $argv
+end
+funcsave france
+```
+
+On first start the app creates `french_app.db` (SQLite) in the project directory. New columns are added to an existing database automatically, so there are no migrations to run.
 
 ### Using it from a phone
 
-Run uvicorn on all interfaces and open the laptop's address from the phone:
+Listen on all interfaces and open the laptop's address from the phone:
 
 ```sh
-uvicorn main:app --host 0.0.0.0 --port 8000
+./france --host 0.0.0.0
 ```
 
 Browsers only run service workers over HTTPS or on `localhost`, so offline mode and "Add to Home Screen" as a standalone app need the server behind HTTPS (for example `tailscale serve` or a reverse proxy with a certificate). Over plain HTTP on the LAN everything else still works.
