@@ -225,7 +225,7 @@
 <body>
 <main>
   <header class="top">
-    <a class="back" href="/">← Reader</a>
+    <a class="back" href="/">← Home</a>
     <h1>Library</h1>
     <a id="review-link" class="pill" href="/review">Review</a>
   </header>
@@ -240,11 +240,11 @@
   <section id="tab-texts" role="tabpanel">
     <div class="tab-head">
       <p class="hint">Texts you've saved from the reader, with how much of each you already know.</p>
-      <a class="btn primary" href="/">New text</a>
+      <a class="btn primary" href="/read">New text</a>
     </div>
     <p id="texts-status" class="error" hidden></p>
     <ul id="texts" class="list"></ul>
-    <div id="texts-empty" class="empty" hidden>No saved texts yet. Paste one into the <a href="/">reader</a> and press <b>Save to library</b>.</div>
+    <div id="texts-empty" class="empty" hidden>No saved texts yet. Paste one into the <a href="/read">reader</a> and press <b>Save to library</b>.</div>
   </section>
 
   <section id="tab-words" role="tabpanel" hidden>
@@ -407,14 +407,14 @@ async function loadTexts() {
 
 function textItem(t) {
   const li = el("li", { className: "text-item" });
-  const title = el("a", { className: "text-title", href: `/?text=${t.id}`, textContent: t.title });
+  const title = el("a", { className: "text-title", href: `/read?text=${t.id}`, textContent: t.title });
   const meter = el("div", { className: "meter" },
     el("div", { className: "meter-bar", title: `${t.known_pct}% of the words are in your cards` }, el("div", { style: `width: ${t.known_pct}%` })),
     `${t.known_pct}% known · ${t.word_count} words · ${t.new_words} new`,
   );
   const rename = el("button", { type: "button", className: "btn", textContent: "Rename" });
   const del = el("button", { type: "button", className: "btn", textContent: "Delete" });
-  const actions = el("div", { className: "text-actions" }, el("a", { className: "btn primary", href: `/?text=${t.id}`, textContent: "Read" }), rename, del);
+  const actions = el("div", { className: "text-actions" }, el("a", { className: "btn primary", href: `/read?text=${t.id}`, textContent: "Read" }), rename, del);
   li.append(title, el("p", { className: "preview", lang: "fr", textContent: t.preview }), meter, actions);
 
   rename.addEventListener("click", () => {

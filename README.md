@@ -4,7 +4,11 @@ A self-hosted French vocabulary app: read French text, tap words to look them up
 
 ## Features
 
-**Reader** (`/`)
+**Home** (`/`)
+- What's due today with a button to start reviewing, or when the next card is due.
+- Links to every page, your most recent texts, and your progress: card counts, how many of the 1,000 most common words you have, and your words at each CEFR level.
+
+**Reader** (`/read`)
 - Paste French text and every word is highlighted by status: in your cards, due for review, or part of a saved phrase.
 - Tap a word for definitions, example sentences with English translations, and pronunciation (normal or slow).
 - Inflected forms resolve to their base form ("belle" → "beau", "vais" → "aller"). Nouns show their gender, and verbs show conjugation tables.

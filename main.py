@@ -38,6 +38,11 @@ STATIC_DIR = pathlib.Path(__file__).parent / "app" / "static"
 
 
 @app.get("/", include_in_schema=False)
+def dashboard():
+    return FileResponse(STATIC_DIR / "dashboard.html")
+
+
+@app.get("/read", include_in_schema=False)
 def reader():
     return FileResponse(STATIC_DIR / "index.html")
 

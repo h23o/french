@@ -180,7 +180,7 @@
 <body>
 <main>
   <header class="top">
-    <a class="back" href="/">← Reader</a>
+    <a class="back" href="/">← Home</a>
     <h1>My cards</h1>
     <a id="review-link" class="pill" href="/review">Review</a>
   </header>
@@ -296,7 +296,7 @@ function render() {
   const empty = $("#empty");
   empty.hidden = visible.length > 0;
   if (!cards.length) {
-    empty.replaceChildren("No cards yet. ", el("a", { href: "/", textContent: "Open the reader" }), " and save some words.");
+    empty.replaceChildren("No cards yet. ", el("a", { href: "/read", textContent: "Open the reader" }), " and save some words.");
   } else if (!visible.length) {
     empty.textContent = query ? "No cards match your search." : "Nothing is due right now.";
   }

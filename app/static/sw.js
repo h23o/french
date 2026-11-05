@@ -3,13 +3,14 @@
 
 // Bump to refresh the precached pages; the audio cache is deliberately unversioned
 // so saved audio survives app updates.
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL_CACHE = `shell-${VERSION}`;
 const DATA_CACHE = `data-${VERSION}`;
 const AUDIO_CACHE = "tts-audio";
 
 const SHELL = [
   "/",
+  "/read",
   "/review",
   "/my-cards",
   "/library",

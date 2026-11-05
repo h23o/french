@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="French Reader">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141416" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<script>
+// The reader used to live at / (links like /?text=3); send those to its new address.
+if (new URLSearchParams(location.search).has("text")) location.replace(`/read${location.search}`);
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+</script>
+<title>French</title>
+<style>
+  :root {
+    --bg: #f6f6f3;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6a6a70;
+    --border: #dcdcd6;
+    --hover: #ecece6;
+    --accent: #2457d6;
+    --accent-text: #ffffff;
+    --due-bg: #ffd49e;
+    --due-text: #5e2f00;
+    --good-bg: #dff3e4;
+    --good-text: #1d5a32;
+    --meter: #3f8f5a;
+    --danger: #b42318;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416;
+      --surface: #1e1e21;
+      --text: #ececef;
+      --muted: #a2a2aa;
+      --border: #35353b;
+      --hover: #2a2a2f;
+      --accent: #7ea4ff;
+      --accent-text: #0d1a33;
+      --due-bg: #5a3311;
+      --due-text: #ffdcb3;
+      --good-bg: #183a24;
+      --good-text: #c9f0d5;
+      --meter: #5cb87a;
+      --danger: #ff8a80;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 28px; }
+  a { color: inherit; }
+
+  header h1 { font: 600 1.75rem/1.2 Georgia, "Iowan Old Style", serif; margin: 0; }
+  header p { color: var(--muted); margin: 4px 0 0; }
+
+  h2 { font-size: 1rem; margin: 0; }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .section-head a { color: var(--accent); font-size: .875rem; font-weight: 600; text-decoration: none; }
+  .section-head a:hover { text-decoration: underline; }
+  .hint { color: var(--muted); font-size: .875rem; margin: 0; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+
+  .btn {
+    font: inherit;
+    font-weight: 600;
+    font-size: .9375rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 16px;
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .btn:focus-visible, .tile:focus-visible, .level:focus-visible, .text-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- Today ---- */
+  .today { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 22px; }
+  .today.due { background: var(--due-bg); border-color: var(--due-bg); color: var(--due-text); }
+  .today.done { background: var(--good-bg); border-color: var(--good-bg); color: var(--good-text); }
+  .today-big { font: 600 1.5rem/1.2 Georgia, serif; margin: 0; }
+  .today-sub { margin: 4px 0 0; font-size: .9375rem; opacity: .85; }
+  .today-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .today.due .btn:not(.primary), .today.done .btn:not(.primary) { background: transparent; border-color: currentColor; color: inherit; }
+  .sync-note { margin: 8px 0 0; font-size: .8125rem; opacity: .85; }
+
+  /* ---- Go to ---- */
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .tile {
+    display: grid;
+    gap: 2px;
+    align-content: start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    text-decoration: none;
+    min-width: 0;
+  }
+  .tile:hover { border-color: var(--accent); }
+  .tile-icon { font-size: 1.35rem; line-height: 1; margin-bottom: 6px; }
+  .tile-name { font-weight: 600; }
+  .tile-desc { color: var(--muted); font-size: .8125rem; }
+
+  /* ---- Continue reading ---- */
+  .texts { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .texts li + li { border-top: 1px solid var(--border); }
+  .text-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 16px; padding: 12px 16px; text-decoration: none; }
+  .text-row:hover { background: var(--hover); }
+  .text-title { font: 600 1.05rem/1.3 Georgia, serif; overflow-wrap: anywhere; }
+  .text-meta { grid-column: 1; color: var(--muted); font-size: .8125rem; }
+  .text-pct { grid-row: 1 / span 2; grid-column: 2; text-align: right; font-size: .8125rem; color: var(--muted); display: grid; gap: 4px; justify-items: end; }
+  .text-pct b { color: var(--text); font-size: 1rem; }
+  .meter-bar { height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+  .meter-bar > div { height: 100%; background: var(--meter); }
+  .text-pct .meter-bar { width: 80px; }
+  .empty { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 20px; color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+  /* ---- Progress ---- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: grid; gap: 2px; min-width: 0; }
+  .stat-value { font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .stat-label { color: var(--muted); font-size: .8125rem; }
+  .stat-link { text-decoration: none; }
+  .stat-link:hover { border-color: var(--accent); }
+  .stat-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .levels { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .level { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; text-decoration: none; min-width: 0; }
+  .level:hover { border-color: var(--accent); }
+  .level-code { font-weight: 600; font-size: .875rem; }
+  .level-count { font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .levels-note { margin-top: 8px; }
+
+  @media (max-width: 620px) {
+    .tiles, .stats { grid-template-columns: repeat(2, 1fr); }
+    .levels { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Bonjour</h1>
+    <p id="date"></p>
+  </header>
+
+  <section id="today" class="panel today" aria-live="polite">
+    <div>
+      <p class="today-big">Loading…</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="goto-heading">
+    <div class="section-head"><h2 id="goto-heading">Go to</h2></div>
+    <nav class="tiles">
+      <a class="tile" href="/read"><span class="tile-icon" aria-hidden="true">📖</span><span class="tile-name">Reader</span><span class="tile-desc">Paste a text, tap words to look them up and save them</span></a>
+      <a class="tile" href="/review"><span class="tile-icon" aria-hidden="true">🔁</span><span class="tile-name">Review</span><span id="tile-review" class="tile-desc">Flashcards, spaced out so they stick</span></a>
+      <a class="tile" href="/my-cards"><span class="tile-icon" aria-hidden="true">🗂️</span><span class="tile-name">My cards</span><span id="tile-cards" class="tile-desc">Browse and edit everything you've saved</span></a>
+      <a class="tile" href="/library"><span class="tile-icon" aria-hidden="true">📚</span><span class="tile-name">Library</span><span class="tile-desc">Saved texts, word lists by frequency and level, phrases</span></a>
+    </nav>
+  </section>
+
+  <section aria-labelledby="reading-heading">
+    <div class="section-head">
+      <h2 id="reading-heading">Continue reading</h2>
+      <a href="/library#texts">All texts</a>
+    </div>
+    <ul id="texts" class="texts" hidden></ul>
+    <div id="texts-empty" class="empty" hidden>
+      <span>No saved texts yet. Paste one into the reader and press <b>Save to library</b>.</span>
+      <a class="btn" href="/read">Open the reader</a>
+    </div>
+    <p id="texts-error" class="hint" hidden></p>
+  </section>
+
+  <section aria-labelledby="progress-heading">
+    <div class="section-head"><h2 id="progress-heading">Your progress</h2></div>
+    <div class="stats">
+      <div class="stat"><span id="stat-cards" class="stat-value">–</span><span class="stat-label">Cards</span></div>
+      <div class="stat"><span id="stat-week" class="stat-value">–</span><span class="stat-label">Added this week</span></div>
+      <div class="stat" title="Cards whose next review is three weeks or more after the last one"><span id="stat-mature" class="stat-value">–</span><span class="stat-label">Well known</span></div>
+      <a class="stat stat-link" href="/library#words" title="How many of the 1,000 most common French words are in your cards"><span id="stat-common" class="stat-value">–</span><span class="stat-label">Top 1,000 words</span></a>
+    </div>
+    <div id="levels" class="levels" aria-label="Words in your cards at each CEFR level"></div>
+    <p class="hint levels-note">Words at each CEFR level, from A1 (beginner) to C2 (mastery), that are in your cards. Tap a level to browse it.</p>
+  </section>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const DAY = 86400000;
+const MATURE_DAYS = 21;
+const LEVELS = { A1: "Beginner", A2: "Elementary", B1: "Intermediate", B2: "Upper intermediate", C1: "Advanced", C2: "Mastery" };
+const compact = new Intl.NumberFormat("en", { notation: "compact" });
+const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+async function api(path) {
+  const resp = await fetch(path);
+  if (!resp.ok) throw new Error(`Request failed (${resp.status})`);
+  return resp.json();
+}
+
+const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+
+function fromNow(ms) {
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return relative.format(Math.max(minutes, 1), "minute");
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return relative.format(hours, "hour");
+  return relative.format(Math.round(hours / 24), "day");
+}
+
+$("#date").textContent = new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+
+// ---- Today: what's due ----
+
+// Ratings the review page saved while the laptop was out of reach (see review.html).
+function offlineRatings() {
+  try {
+    return JSON.parse(localStorage.getItem("review-offline-queue")) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function renderToday(cards) {
+  const now = Date.now();
+  const rated = new Set(offlineRatings().map((r) => r.card_id)); // already reviewed, not yet synced
+  const pending = cards.filter((c) => !rated.has(c.id));
+  const due = pending.filter((c) => new Date(c.next_review) <= now).length;
+  const upcoming = pending.map((c) => new Date(c.next_review) - now).filter((ms) => ms > 0).sort((a, b) => a - b);
+  const tomorrow = upcoming.filter((ms) => ms <= DAY).length;
+
+  const today = $("#today");
+  today.classList.toggle("due", due > 0);
+  today.classList.toggle("done", due === 0 && cards.length > 0);
+  let big, sub, actions;
+  if (!cards.length) {
+    big = "Start by reading";
+    sub = "Paste a French text into the reader and tap the words you don't know to save them as cards. Or pick words to learn from the beginner (A1) list.";
+    actions = [el("a", { className: "btn primary", href: "/read", textContent: "Open the reader" }), el("a", { className: "btn", href: "/library#levels", textContent: "Browse A1 words", onclick: () => localStorage.setItem("library-level", "A1") })];
+  } else if (due) {
+    big = `${plural(due, "card")} to review`;
+    sub = tomorrow ? `${plural(tomorrow, "more")} due in the next 24 hours.` : "Rate each one and it comes back just before you'd forget it.";
+    actions = [el("a", { className: "btn primary", href: "/review", textContent: "Start review" })];
+  } else {
+    big = "All caught up";
+    sub = upcoming.length ? `Next card due ${fromNow(upcoming[0])}${tomorrow > 1 ? `, ${tomorrow} in the next 24 hours` : ""}.` : "Nothing scheduled.";
+    actions = [el("a", { className: "btn", href: "/read", textContent: "Read something new" })];
+  }
+  const text = el("div", {}, el("p", { className: "today-big", textContent: big }), el("p", { className: "today-sub", textContent: sub }));
+  const queued = offlineRatings().length;
+  if (queued) text.append(el("p", { className: "sync-note", textContent: `${plural(queued, "rating")} from an offline review waiting to sync. Open Review while connected to send them.` }));
+  today.replaceChildren(text, el("div", { className: "today-actions" }, ...actions));
+
+  $("#tile-review").textContent = due ? `${plural(due, "card")} due now` : "Nothing due right now";
+  $("#tile-cards").textContent = cards.length ? `${plural(cards.length, "card")} saved` : "Nothing saved yet";
+}
+
+function renderStats(cards) {
+  const weekAgo = Date.now() - 7 * DAY;
+  $("#stat-cards").textContent = cards.length.toLocaleString();
+  $("#stat-week").textContent = cards.filter((c) => new Date(c.created_at) >= weekAgo).length.toLocaleString();
+  $("#stat-mature").textContent = cards.filter((c) => c.interval >= MATURE_DAYS).length.toLocaleString();
+}
+
+async function loadCards() {
+  try {
+    const cards = await api("/cards/");
+    renderToday(cards);
+    renderStats(cards);
+  } catch {
+    $("#today").replaceChildren(el("div", {},
+      el("p", { className: "today-big", textContent: "Can't reach the laptop" }),
+      el("p", { className: "today-sub", textContent: "If you've opened Review before, it can still run from the cards it saved." }),
+    ), el("div", { className: "today-actions" }, el("a", { className: "btn primary", href: "/review", textContent: "Open review" })));
+  }
+}
+
+// ---- Continue reading ----
+
+async function loadTexts() {
+  let texts;
+  try {
+    texts = await api("/texts/");
+  } catch (err) {
+    $("#texts-error").textContent = `Couldn't load your texts: ${err.message}`;
+    $("#texts-error").hidden = false;
+    return;
+  }
+  $("#texts-empty").hidden = texts.length > 0;
+  $("#texts").hidden = !texts.length;
+  $("#texts").replaceChildren(...texts.slice(0, 3).map((t) =>
+    el("li", {}, el("a", { className: "text-row", href: `/read?text=${t.id}` },
+      el("span", { className: "text-title", lang: "fr", textContent: t.title }),
+      el("span", { className: "text-meta", textContent: `${plural(t.word_count, "word")} · ${t.new_words.toLocaleString()} new to you` }),
+      el("span", { className: "text-pct", title: `${t.known_pct}% of the words are in your cards` },
+        el("span", {}, el("b", { textContent: `${t.known_pct}%` }), " known"),
+        el("div", { className: "meter-bar" }, el("div", { style: `width: ${t.known_pct}%` })),
+      ),
+    ))));
+}
+
+// ---- Progress: word lists ----
+
+async function loadCoverage() {
+  const [words, levels] = await Promise.allSettled([api("/api/bank/words?limit=1"), api("/api/bank/levels?limit=1")]);
+  if (words.status === "fulfilled") {
+    const top = words.value.coverage.find((c) => c.top === 1000);
+    if (top) $("#stat-common").textContent = top.known.toLocaleString();
+  }
+  if (levels.status === "fulfilled") {
+    $("#levels").replaceChildren(...levels.value.coverage.map(({ level, total, known }) => {
+      const link = el("a", { className: "level", href: "/library#levels", title: `${level} · ${LEVELS[level]}: ${known.toLocaleString()} of ${total.toLocaleString()} words in your cards` },
+        el("span", { className: "level-code", textContent: level }),
+        el("span", { className: "level-count", textContent: `${known.toLocaleString()} / ${compact.format(total)}` }),
+        el("div", { className: "meter-bar" }, el("div", { style: `width: ${(100 * known) / total}%` })),
+      );
+      // The library opens on the level last picked there.
+      link.addEventListener("click", () => localStorage.setItem("library-level", level));
+      return link;
+    }));
+  }
+}
+
+loadCards();
+loadTexts();
+loadCoverage();
+</script>
+</body>
+</html>
